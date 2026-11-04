@@ -3356,13 +3356,13 @@ bool CompilerSession::checkSources() {
           }
           ZC_IF_SOME(crateEntry, crate) {
             auto bodyResult = bodyChecker.check(
-                checker::body::BodyCheckingInput{boundView.boundModule().retain(), checkerAuthority,
-                                                 ZC_ASSERT_NONNULL(stagedMarkerPolicies),
-                                                 ZC_ASSERT_NONNULL(stagedStandardMarkerAuthority),
-                                                 stagedSignatureFacts[factIndex],
-                                                 stagedImportedSignatureViews[factIndex], coherence,
-                                                 *impl->semanticTypeStore, inventory,
-                                                 crateEntry.key().semanticOptions()},
+                checker::body::BodyCheckingInput{
+                    boundView.boundModule().retain(), checkerAuthority,
+                    ZC_ASSERT_NONNULL(stagedMarkerPolicies),
+                    ZC_ASSERT_NONNULL(stagedStandardMarkerAuthority),
+                    stagedSignatureFacts[factIndex], stagedImportedSignatureViews[factIndex],
+                    coherence, *impl->semanticTypeStore, inventory,
+                    crateEntry.key().semanticOptions(), impl->langOpts.experimentalCaptures},
                 factStoreBrands);
             if (bodyResult.is<checker::checked::CheckedFactsSourceRejected>()) {
               auto rejected =

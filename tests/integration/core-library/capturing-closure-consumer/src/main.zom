@@ -1,0 +1,12 @@
+// RFC 0058 Part B1: a non-escaping closure captures one initialized Copy
+// scalar local by value. The closure lowers to a one-parameter function that
+// returns its synthetic environment parameter; the caller passes the captured
+// local as one implicit by-value argument. Admitted only behind the
+// default-off --experimental-captures gate; exits 42 natively.
+fn entry() -> i32 {
+  let x: i32 = 42;
+  let f = fn() -> i32 {
+    return x;
+  };
+  return f();
+}

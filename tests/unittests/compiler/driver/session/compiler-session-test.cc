@@ -211,10 +211,12 @@ package::ResolutionOutput sessionResolution(zc::MemoryResource& resource) {
 
 class RetainedPackageSession final {
 public:
-  RetainedPackageSession()
+  explicit RetainedPackageSession(bool experimentalCaptures = false)
       : languageOptions(zc::heap<basic::LangOptions>()),
         compilerOptions(zc::heap<basic::CompilerOptions>()),
-        sessionValue(createSession(*languageOptions, *compilerOptions)) {}
+        sessionValue(createSession(*languageOptions, *compilerOptions)) {
+    languageOptions->experimentalCaptures = experimentalCaptures;
+  }
   RetainedPackageSession(RetainedPackageSession&&) noexcept = default;
   RetainedPackageSession& operator=(RetainedPackageSession&&) noexcept = default;
   ZC_DISALLOW_COPY(RetainedPackageSession);
@@ -235,8 +237,8 @@ private:
 };
 
 RetainedPackageSession packageSession(zc::StringPtr mainSource, zc::StringPtr childSource = {},
-                                      bool installCore = true) {
-  RetainedPackageSession session;
+                                      bool installCore = true, bool experimentalCaptures = false) {
+  RetainedPackageSession session(experimentalCaptures);
   auto registry = sessionTargetRegistry();
   zc::Vector<package::ResolvedPackageSourceSnapshot> snapshots;
   snapshots.add(package::ResolvedPackageSourceSnapshot::from(
@@ -674,6 +676,77 @@ ZC_TEST("CompilerSessionTest.ParameterizedLambdaClosureKeepsCapabilityDrain") {
   ZC_EXPECT(!session->checkSources());
   ZC_EXPECT(diagnosticCount(*session, diagnostics::DiagID::FunctionBodySemanticsUnavailable) == 1);
   ZC_EXPECT(session->getIncidents().empty());
+}
+
+ZC_TEST("CompilerSessionTest.FlagOffCapturingClosureKeepsCapabilityDrain") {
+  // RFC 0058 Part B1 default-off: without --experimental-captures a closure
+  // reading an outer scalar keeps the ZOM4099 capability drain and produces no
+  // incident, byte-identical to RFC 0057 slice 1.
+  auto session = packageSession(
+      "fn entry() -> i32 { let x: i32 = 42; let f = fn() -> i32 { return x; }; "
+      "return f(); }\n"_zc);
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(!session->checkSources());
+  ZC_EXPECT(diagnosticCount(*session, diagnostics::DiagID::FunctionBodySemanticsUnavailable) == 1);
+  ZC_EXPECT(session->getIncidents().empty());
+}
+
+ZC_TEST("CompilerSessionTest.FlagOnSingleScalarCaptureLowersToHirAndMir") {
+  // RFC 0058 Part B1 with --experimental-captures: one initialized Copy i32
+  // local captured by a block-body zero-parameter function-expression closure
+  // lowers end to end. The closure is a one-parameter function returning its
+  // synthetic environment parameter; the caller has one literal-initialized
+  // local and passes it as the call's single implicit argument.
+  auto session = packageSession(
+      "fn entry() -> i32 { let x: i32 = 42; let f = fn() -> i32 { return x; }; "
+      "return f(); }\n"_zc,
+      zc::StringPtr{}, true, true);
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(session->checkSources());
+  ZC_EXPECT(!session->hasDiagnosticErrors());
+  ZC_EXPECT(session->getIncidents().empty());
+  ZC_REQUIRE(session->getVerifiedHirModules().size() == 1);
+  const auto& hir = session->getVerifiedHirModules()[0];
+  ZC_EXPECT(hir.functions().size() == 2);
+  // Only the caller allocates a local (the captured x); the closure alias stays
+  // slotless and the closure body uses its synthetic parameter.
+  ZC_EXPECT(hir.locals().size() == 1);
+  ZC_EXPECT(hir.calls().size() == 1);
+  ZC_EXPECT(hir.calls()[0].arguments.size() == 1);
+  // The closure carries exactly one synthetic parameter; entry carries none.
+  size_t closureParameterTotal = 0;
+  for (const auto& function : hir.functions()) {
+    closureParameterTotal += function.parameters.size();
+  }
+  ZC_EXPECT(closureParameterTotal == 1);
+  ZC_REQUIRE(session->getOwnershipCheckedMirModules().size() == 1);
+  ZC_EXPECT(session->getOwnershipCheckedMirModules()[0].builtMir().functions().size() == 2);
+}
+
+ZC_TEST("CompilerSessionTest.FlagOnRejectedCaptureShapesKeepCapabilityDrain") {
+  // RFC 0058 Part B1 negatives even with the gate on: two captures, a captured
+  // parameter, and an explicit by-value `use []` clause all keep ZOM4099 with
+  // zero incidents.
+  const auto drains = [](zc::StringPtr source) {
+    auto session = packageSession(source, zc::StringPtr{}, true, true);
+    ZC_REQUIRE(session->parseSources());
+    ZC_REQUIRE(session->bindSources());
+    ZC_EXPECT(!session->checkSources());
+    ZC_EXPECT(diagnosticCount(*session, diagnostics::DiagID::FunctionBodySemanticsUnavailable) ==
+              1);
+    ZC_EXPECT(session->getIncidents().empty());
+  };
+  drains(
+      "fn entry() -> i32 { let x: i32 = 40; let y: i32 = 2; "
+      "let f = fn() -> i32 { return x + y; }; return f(); }\n"_zc);
+  drains("fn entry(n: i32) -> i32 { let f = fn() -> i32 { return n; }; return f(); }\n"_zc);
+  drains(
+      "fn entry() -> i32 { let x: i32 = 42; "
+      "let f = fn() use [x] -> i32 { return x; }; return f(); }\n"_zc);
 }
 
 ZC_TEST("CompilerSessionTest.PublishesGenericDirectBorrowSignature") {

@@ -43,19 +43,32 @@ TARGET_REJECT_TEXT = "Cannot execute target"
 
 
 def run(
-    zomc: str, manifest: str, package: str, binary: str, target: str | None = None
+    zomc: str,
+    manifest: str,
+    package: str,
+    binary: str,
+    target: str | None = None,
+    extra_args: list[str] | None = None,
 ) -> tuple[int, str]:
     resolved_manifest = str(Path(manifest).resolve(strict=True))
     command = [
         zomc,
         "run",
-        "--manifest-path",
-        resolved_manifest,
-        "--package",
-        package,
-        "--bin",
-        binary,
     ]
+    # Experimental feature gates must precede the package selection arguments so
+    # they are in effect for the whole compilation.
+    if extra_args:
+        command.extend(extra_args)
+    command.extend(
+        [
+            "--manifest-path",
+            resolved_manifest,
+            "--package",
+            package,
+            "--bin",
+            binary,
+        ]
+    )
     if target is not None:
         command.extend(["--target", target])
     with tempfile.TemporaryDirectory(prefix="zom-native-run-") as temporary:
@@ -71,19 +84,30 @@ def run(
         return result.returncode, ANSI.sub("", result.stdout)
 
 
-def parse_case(spec: str) -> tuple[str, str, str, int]:
+def parse_case(spec: str) -> tuple[str, str, str, int, list[str]]:
     parts = spec.split("::")
-    if len(parts) != 4:
-        raise ValueError(f"run case must be manifest::package::binary::exit, got: {spec!r}")
-    manifest, package, binary, exit_text = parts
-    return manifest, package, binary, int(exit_text)
+    if len(parts) not in (4, 5):
+        raise ValueError(
+            "run case must be manifest::package::binary::exit[::extra-arg], got: "
+            f"{spec!r}"
+        )
+    manifest, package, binary, exit_text = parts[:4]
+    # An optional fifth segment forwards one experimental gate (e.g.
+    # `--experimental-captures`) to the `zomc run` invocation.
+    extra_args = [parts[4]] if len(parts) == 5 and parts[4] else []
+    return manifest, package, binary, int(exit_text), extra_args
 
 
 def check_run_case(
-    zomc: str, manifest: str, package: str, binary: str, expected_exit: int
+    zomc: str,
+    manifest: str,
+    package: str,
+    binary: str,
+    expected_exit: int,
+    extra_args: list[str] | None = None,
 ) -> None:
     """Assert one entry-compatible program runs with its exact exit code."""
-    exit_code, output = run(zomc, manifest, package, binary)
+    exit_code, output = run(zomc, manifest, package, binary, extra_args=extra_args)
     if LINK_FAILED in output:
         raise RuntimeError(f"native run reported a link failure:\nrc={exit_code}\n{output}")
     if exit_code != expected_exit:
@@ -184,9 +208,20 @@ def main() -> int:
     # fails fast without starting the pool.
     tasks: list[tuple[str, Callable[[], None]]] = []
     for spec in arguments.run_case:
-        manifest, package, binary, expected_exit = parse_case(spec)
+        manifest, package, binary, expected_exit, extra_args = parse_case(spec)
         tasks.append(
-            (f"run {package}", partial(check_run_case, zomc, manifest, package, binary, expected_exit))
+            (
+                f"run {package}",
+                partial(
+                    check_run_case,
+                    zomc,
+                    manifest,
+                    package,
+                    binary,
+                    expected_exit,
+                    extra_args,
+                ),
+            )
         )
     for spec in arguments.reject_case:
         parts = spec.split("::")

@@ -293,9 +293,12 @@ bool isScalarUnaryOperation(checker::PrimitiveOperation operation) {
 // is not built yet, so each error operator drains as a per-definition
 // capability rejection.
 bool unsupportedNonErasureFacts(const checker::checked::VerifiedCheckedFacts& facts) {
+  // RFC 0058 B1: capture facts are consumed by the closure HIR pass (one Copy
+  // scalar capture becomes a synthetic environment parameter), so a non-empty
+  // capture map is supported. The checker gates capture admission to that one
+  // shape behind the experimental flag.
   return facts.compoundAssignments().size() == 0 && facts.observedOperations().size() == 0 &&
-         facts.captures().size() == 0 && facts.projections().size() == 0 &&
-         facts.obligations().size() == 0;
+         facts.projections().size() == 0 && facts.obligations().size() == 0;
 }
 
 // A concrete-to-dyn erasure the lowering carrier does not implement yet:

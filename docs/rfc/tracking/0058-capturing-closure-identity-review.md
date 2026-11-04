@@ -320,8 +320,45 @@ is never flipped on by default. Main open risks: the capture-fact verifier and
 census are new code, and the zero-source-argument to one-implicit-argument
 reconciliation is a new HIR check rather than a reuse.
 
+### Part B1 landed (2026-11-04, flagged)
 
-| B1 | Flagged one-Copy-scalar capture on top of B0: unboxed `{code,env}` carrier, HIR leading environment parameter + field projection, implicit context argument, MIR leading env local + frame-relative operand, LIR leading pointer parameter | Proposed | capturing-closure-consumer native exit, checker/HIR/MIR/LIR ztests, conformance pos/neg, parity |
+The flagged one-Copy-scalar slice is implemented behind the default-off
+`--experimental-captures` session gate. Scope realized exactly as proposed: a
+block-body `fn` expression (the paren-arrow spelling keeps draining), zero user
+parameters, whose sole statement returns one initialized read-only annotated
+owner-local scalar (i32/bool); multiple captures, captured parameters, i64,
+mutation, and explicit `use []` all keep ZOM4099 with zero incidents.
+
+Implementation shape (a refinement of the sketch above): the checker is the
+only phase that reads the flag. On admission it publishes one
+`CheckedCaptureFact{mode=Copy, origin=Inferred}` per requirement; the existing
+capture codec plus the missing/additional exact-set verifier enforce the fact
+set, so no new checker codec was needed. HIR derives everything from the
+verified capture fact (the flag never reaches HIR): the closure gains one
+synthetic by-value parameter keyed `CallableParameterIdentityRecord::from(
+closure DefKey, ordinary(0))` and lowers as `ParameterReferenceReturn`; the
+caller is the three-statement
+`[let x; let f=fn; return f()]` capture-alias shape, slotless for the alias,
+with one literal-initialized local passed as the single implicit argument.
+MIR and LIR are unchanged: the pair falls through the pre-existing
+`lowerScalarLocalCallModule` identity-callee ladder and exits 42 natively.
+
+The gate rides the non-persisted channel only (`basic::LangOptions`,
+forwarded through a plain `BodyCheckingInput` bool). It is deliberately not
+copied onto `SelectedLanguageOptions` / `SemanticCompilerOptionsKey`, so it
+never enters the canonical request, crate identity, query cache, or checked
+facts revision hash.
+
+Tests: `CompilerSessionTest.FlagOffCapturingClosureKeepsCapabilityDrain`,
+`FlagOnSingleScalarCaptureLowersToHirAndMir`, and
+`FlagOnRejectedCaptureShapesKeepCapabilityDrain` (two captures, captured
+parameter, explicit `use []`); the `capturing-closure-consumer` package is a
+`native-run-cli --run-case ...::42::--experimental-captures` (the run harness
+grew an optional fifth spec segment forwarding one experimental gate). No
+default test invocation sets the flag and the default corpus is unchanged.
+
+
+| B1 | Flagged one-Copy-scalar capture on top of B0: the flagged closure becomes a one-parameter function returning its by-value scalar environment parameter; the caller passes the captured local as one implicit scalar argument. Rides the existing `ParameterReferenceReturn` + `lowerScalarLocalCallModule` native ladder (no MIR/LIR change); the flag is session-scoped only and never enters a canonical codec or crate identity | Landed (local) | capturing-closure-consumer native exit 42, flag-off/on session ztests + negatives, full sanitizer ctest |
 | B2 | Bounded multi-Copy-scalar capture set (canonical syntax-path field order) | Proposed | multi-capture consumer |
 | Later | Reference/move captures | Blocked | RFC 0007 ownership completion |
 | Later | Escaping/boxed closures | Blocked | allocator ABI |

@@ -97,6 +97,9 @@ struct BodyCheckingInput final {
   type::SemanticTypeStore& semanticTypes;
   const VerifiedBodyFactRequirementInventory& requirements;
   const identity::SemanticCompilerOptionsKey& semanticOptions;
+  /// \brief RFC 0058 flagged single-Copy-scalar capture gate. Session-scoped
+  /// and never canonicalized; when false every capture requirement drains.
+  bool experimentalCaptures = false;
 };
 
 using BodyCheckingResult =

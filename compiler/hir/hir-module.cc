@@ -1114,13 +1114,50 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                             ir::IrFailureKind::InvalidFact, module, registries,
                                             index + 1);
       }
-      if (function.node != hirId(expectedFunction) || block.node != hirId(expectedFunction + 1) ||
-          function.body != block.node || block.statements.size() != 1 ||
-          block.statements[0] != hirId(expectedFunction + 2) || function.parameters.size() != 0 ||
-          function.receiver != zc::none) {
+      // RFC 0058 B1: a block-body `fn` closure with exactly one verified Copy
+      // scalar capture carries one synthetic by-value environment parameter and
+      // returns it; the non-capturing spelling stays parameterless and returns
+      // a scalar literal.
+      const checker::checked::CheckedCaptureFact* closureCaptureFact = nullptr;
+      for (const auto& captureEntry : facts.captures().entries()) {
+        if (captureEntry.value.closure != closureDefinition.closureKey) { continue; }
+        if (closureCaptureFact != nullptr) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        closureCaptureFact = &captureEntry.value;
+      }
+      const bool closureCaptures = closureCaptureFact != nullptr;
+      if (closureCaptures &&
+          (closureCaptureFact->mode != checker::checked::CaptureMode::Copy ||
+           closureCaptureFact->origin != checker::checked::CaptureOrigin::Inferred ||
+           !closureIsFunctionExpression || function.linkage != HirLinkage::Internal)) {
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                             ir::IrFailureKind::InvalidFact, module, registries,
                                             index + 1);
+      }
+      if (function.node != hirId(expectedFunction) || block.node != hirId(expectedFunction + 1) ||
+          function.body != block.node || block.statements.size() != 1 ||
+          block.statements[0] != hirId(expectedFunction + 2) || function.receiver != zc::none ||
+          (closureCaptures ? function.parameters.size() != 1 : function.parameters.size() != 0)) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      if (closureCaptures) {
+        // Recompute the synthetic environment key from the closure DefinitionKey
+        // and position zero; no binder callable-parameter authority exists for it.
+        auto expectedEnvironmentRecord = identity::CallableParameterIdentityRecord::from(
+            closureDefinition.key.clone(), identity::CallableParameterPosition::ordinary(0));
+        identity::CallableParameterKey expectedEnvironmentKey =
+            identity::CallableParameterKey::compute(expectedEnvironmentRecord);
+        if (function.parameters[0].key != expectedEnvironmentKey ||
+            function.parameters[0].type != closureCaptureFact->capturedType) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
       }
       zc::Maybe<const HirReturnStatement&> closureReturn;
       for (const auto& candidateReturn : candidate.impl->returns) {
@@ -1136,10 +1173,16 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         closureReturn = candidateReturn;
       }
       zc::Maybe<const HirScalarLiteralExpression&> closureLiteral;
+      zc::Maybe<const HirParameterReferenceExpression&> closureParamRef;
       for (const auto& candidateExpression : candidate.impl->expressions) {
         if (candidateExpression.node.ordinal() < expectedFunction ||
             candidateExpression.node.ordinal() >= expectedFunction + 4) {
           continue;
+        }
+        if (closureCaptures) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::AdditionalFact, module, registries,
+                                              index + 1);
         }
         if (closureLiteral != zc::none || candidateExpression.node != hirId(expectedFunction + 3)) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
@@ -1148,13 +1191,30 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         }
         closureLiteral = candidateExpression;
       }
-      if (closureReturn == zc::none || closureLiteral == zc::none) {
+      for (const auto& candidateReference : candidate.impl->parameterReferences) {
+        if (candidateReference.node.ordinal() < expectedFunction ||
+            candidateReference.node.ordinal() >= expectedFunction + 4) {
+          continue;
+        }
+        if (!closureCaptures) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::AdditionalFact, module, registries,
+                                              index + 1);
+        }
+        if (closureParamRef != zc::none || candidateReference.node != hirId(expectedFunction + 3)) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::AdditionalFact, module, registries,
+                                              index + 1);
+        }
+        closureParamRef = candidateReference;
+      }
+      if (closureReturn == zc::none ||
+          (closureCaptures ? closureParamRef == zc::none : closureLiteral == zc::none)) {
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                             ir::IrFailureKind::MissingRequiredFact, module,
                                             registries, index + 1);
       }
       const auto& returnRecord = ZC_ASSERT_NONNULL(closureReturn);
-      const auto& literalRecord = ZC_ASSERT_NONNULL(closureLiteral);
       // Derive the source value node and expected spans per spelling. The
       // expression-body lambda anchors no source block or return, so the HIR
       // block/return spans reuse the closure source span; the function
@@ -1183,7 +1243,10 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             closureTree.node(closureSource.returnStatement).kind != ast::SyntaxKind::ReturnStmt ||
             closureDeclaredValue != closureSource.value ||
             !closureTree.contains(closureSource.value) ||
-            !isScalarLiteral(closureTree.node(closureSource.value).kind)) {
+            (closureCaptures
+                 ? (closureTree.node(closureSource.value).kind != ast::SyntaxKind::IdentExpr ||
+                    closureSource.value != closureCaptureFact->place.node)
+                 : !isScalarLiteral(closureTree.node(closureSource.value).kind))) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                               ir::IrFailureKind::InvalidFact, module, registries,
                                               index + 1);
@@ -1224,34 +1287,57 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         closureValue = lambdaBody;
         expectedValueSpan = ZC_ASSERT_NONNULL(lambdaValueSpan).clone();
       }
-      if (!sameSpan(block.sourceSpan, expectedBlockSpan) ||
-          !sameSpan(returnRecord.sourceSpan, expectedReturnSpan) ||
-          !sameSpan(literalRecord.sourceSpan, expectedValueSpan) ||
-          !sameSpan(function.sourceSpan, closureDefinition.source)) {
-        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
-                                            ir::IrFailureKind::InvalidFact, module, registries,
-                                            index + 1);
-      }
-      auto closureLiteralIndex = factIndex(facts.literals(), closureValue);
-      if (closureLiteralIndex == zc::none) {
-        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
-                                            ir::IrFailureKind::MissingRequiredFact, module,
-                                            registries, index + 1);
-      }
-      size_t closureLiteralSlot = 0;
-      ZC_IF_SOME(value, closureLiteralIndex) { closureLiteralSlot = value; }
-      const auto& closureLiteralFact = facts.literals().entries()[closureLiteralSlot].value;
-      if (returnRecord.resultType != function.resultType ||
-          returnRecord.value != literalRecord.node || literalRecord.type != function.resultType ||
-          literalRecord.category != HirValueCategory::Value ||
-          closureLiteralFact.node != closureValue ||
-          closureLiteralFact.type != function.resultType ||
-          !sameConstant(literalRecord.value, closureLiteralFact.literal, module, registries,
-                        semanticTypes) ||
-          !typeExists(function.resultType, semanticTypes)) {
-        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
-                                            ir::IrFailureKind::InvalidFact, module, registries,
-                                            index + 1);
+      if (closureCaptures) {
+        const auto& paramRecord = ZC_ASSERT_NONNULL(closureParamRef);
+        auto environmentRecord = identity::CallableParameterIdentityRecord::from(
+            closureDefinition.key.clone(), identity::CallableParameterPosition::ordinary(0));
+        identity::CallableParameterKey environmentKey =
+            identity::CallableParameterKey::compute(environmentRecord);
+        if (!sameSpan(block.sourceSpan, expectedBlockSpan) ||
+            !sameSpan(returnRecord.sourceSpan, expectedReturnSpan) ||
+            !sameSpan(paramRecord.sourceSpan, expectedValueSpan) ||
+            !sameSpan(function.sourceSpan, closureDefinition.source) ||
+            returnRecord.resultType != function.resultType ||
+            returnRecord.value != paramRecord.node || paramRecord.type != function.resultType ||
+            paramRecord.type != closureCaptureFact->capturedType ||
+            paramRecord.category != HirValueCategory::Place ||
+            paramRecord.parameter != environmentKey ||
+            !typeExists(function.resultType, semanticTypes)) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+      } else {
+        const auto& literalRecord = ZC_ASSERT_NONNULL(closureLiteral);
+        if (!sameSpan(block.sourceSpan, expectedBlockSpan) ||
+            !sameSpan(returnRecord.sourceSpan, expectedReturnSpan) ||
+            !sameSpan(literalRecord.sourceSpan, expectedValueSpan) ||
+            !sameSpan(function.sourceSpan, closureDefinition.source)) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        auto closureLiteralIndex = factIndex(facts.literals(), closureValue);
+        if (closureLiteralIndex == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        size_t closureLiteralSlot = 0;
+        ZC_IF_SOME(value, closureLiteralIndex) { closureLiteralSlot = value; }
+        const auto& closureLiteralFact = facts.literals().entries()[closureLiteralSlot].value;
+        if (returnRecord.resultType != function.resultType ||
+            returnRecord.value != literalRecord.node || literalRecord.type != function.resultType ||
+            literalRecord.category != HirValueCategory::Value ||
+            closureLiteralFact.node != closureValue ||
+            closureLiteralFact.type != function.resultType ||
+            !sameConstant(literalRecord.value, closureLiteralFact.literal, module, registries,
+                          semanticTypes) ||
+            !typeExists(function.resultType, semanticTypes)) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
       }
       const checker::signature::SemanticSignature* closureSignature = nullptr;
       for (const auto& candidateSignature : signatures.definitions) {
@@ -13663,6 +13749,231 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         nextFunction += 9;
         continue;
       }
+    }
+    // RFC 0058 B1 capturing-closure-alias caller:
+    // `let x: T = <literal>; let f = fn() -> T { return x; }; return f();`. The
+    // lowered HIR shares the scalar-local six-node preorder (local F+2, literal
+    // F+3, return F+4, call F+5); the alias statement is slotless. The sole
+    // call argument is implicit, so the source call and checker call fact carry
+    // zero arguments while the HIR call carries one local-1 by-value argument.
+    if (sourceShapeMaybe != zc::none &&
+        ZC_ASSERT_NONNULL(sourceShapeMaybe).returnsCapturingClosureAliasCall) {
+      const FunctionReturnShape& source = ZC_ASSERT_NONNULL(sourceShapeMaybe);
+      const auto rejectCaptureCall = [&]() {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      };
+      const auto rejectCaptureCallMissing = [&]() {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::MissingRequiredFact, module,
+                                            registries, index + 1);
+      };
+      zc::Maybe<const HirLocalBinding&> scalarLocal;
+      for (const auto& candidateLocal : candidate.impl->locals) {
+        if (candidateLocal.node != hirId(expectedFunction + 2)) continue;
+        if (scalarLocal != zc::none) return rejectCaptureCall();
+        scalarLocal = candidateLocal;
+      }
+      zc::Maybe<const HirScalarLiteralExpression&> initializerExpression;
+      for (const auto& candidateExpression : candidate.impl->expressions) {
+        if (candidateExpression.node != hirId(expectedFunction + 3)) continue;
+        if (initializerExpression != zc::none) return rejectCaptureCall();
+        initializerExpression = candidateExpression;
+      }
+      zc::Maybe<const HirDirectCallExpression&> scalarCall;
+      for (const auto& candidateCall : candidate.impl->calls) {
+        if (candidateCall.node != hirId(expectedFunction + 5)) continue;
+        if (scalarCall != zc::none) return rejectCaptureCall();
+        scalarCall = candidateCall;
+      }
+      zc::Maybe<const HirReturnStatement&> scalarReturn;
+      for (const auto& candidateReturn : candidate.impl->returns) {
+        if (candidateReturn.node != hirId(expectedFunction + 4)) continue;
+        if (scalarReturn != zc::none) return rejectCaptureCall();
+        scalarReturn = candidateReturn;
+      }
+      if (scalarLocal == zc::none || initializerExpression == zc::none || scalarCall == zc::none ||
+          scalarReturn == zc::none) {
+        return rejectCaptureCallMissing();
+      }
+      const auto& localRecord = ZC_ASSERT_NONNULL(scalarLocal);
+      const auto& expression = ZC_ASSERT_NONNULL(initializerExpression);
+      const auto& call = ZC_ASSERT_NONNULL(scalarCall);
+      const auto& returnStatementRecord = ZC_ASSERT_NONNULL(scalarReturn);
+      if (function.node != hirId(expectedFunction) || block.node != hirId(expectedFunction + 1) ||
+          function.body != block.node || block.statements.size() != 2 ||
+          block.statements[0] != localRecord.node ||
+          block.statements[1] != returnStatementRecord.node ||
+          localRecord.node != hirId(expectedFunction + 2) || localRecord.local != hirLocalId(1) ||
+          localRecord.initializer != hirId(expectedFunction + 3) ||
+          localRecord.initializerSpan == zc::none ||
+          expression.node != hirId(expectedFunction + 3) || expression.type != localRecord.type ||
+          expression.category != HirValueCategory::Value ||
+          returnStatementRecord.node != hirId(expectedFunction + 4) ||
+          returnStatementRecord.value != call.node ||
+          returnStatementRecord.resultType != function.resultType ||
+          call.node != hirId(expectedFunction + 5) || call.resultType != function.resultType ||
+          function.receiver != zc::none || function.parameters.size() != 0 ||
+          !typeExists(localRecord.type, semanticTypes) ||
+          !typeExists(function.resultType, semanticTypes)) {
+        return rejectCaptureCall();
+      }
+
+      auto sourceDefinitionIndex = definitionIndex(definitions, function.definition);
+      auto signaturePosition = signatureIndex(signatures.definitions.asPtr(), function.definition);
+      auto rootPosition = signatureRootIndex(signatures.roots.asPtr(), function.definition);
+      if (sourceDefinitionIndex == zc::none || signaturePosition == zc::none ||
+          rootPosition == zc::none) {
+        return rejectCaptureCallMissing();
+      }
+      size_t definitionSlot = 0;
+      size_t signatureSlot = 0;
+      size_t rootSlot = 0;
+      ZC_IF_SOME(value, sourceDefinitionIndex) { definitionSlot = value; }
+      ZC_IF_SOME(value, signaturePosition) { signatureSlot = value; }
+      ZC_IF_SOME(value, rootPosition) { rootSlot = value; }
+      const auto& sourceDefinition = definitions.definitions()[definitionSlot];
+      const auto& signature = signatures.definitions[signatureSlot];
+      const auto& root = signatures.roots[rootSlot];
+      const auto& tree = bound.tree();
+      if (!hasExecutableBody(sourceDefinition, definitions) ||
+          !definitionBelongsToModule(sourceDefinition, definitions) ||
+          sourceDefinition.record.kind() != identity::DefinitionKind::Function ||
+          !sourceDefinition.site.value().is<binder::DeclarationDefinitionSite>() ||
+          !tree.contains(sourceDefinition.node) ||
+          tree.node(sourceDefinition.node).kind != ast::SyntaxKind::FunctionDecl ||
+          !signature.payload.variant().is<checker::signature::CallableSignature>() ||
+          !signature.scope.variant().is<checker::signature::ModuleDefinitionSignatureScope>()) {
+        return rejectCaptureCall();
+      }
+      const auto& callable =
+          signature.payload.variant().get<checker::signature::CallableSignature>();
+      auto expectedVisibility = visibility(root.visibility);
+      auto expectedLinkage = linkage(callable);
+      if (expectedVisibility == zc::none || expectedLinkage == zc::none ||
+          signature.definition != function.definition ||
+          signature.definitionKind != identity::DefinitionKind::Function ||
+          root.canonicalDefinition != function.definition || root.sourceModule != module ||
+          callable.receiver != zc::none || callable.parameters.size() != 0 ||
+          callable.success != function.resultType ||
+          !sameSpan(signature.declarationSpan, sourceDefinition.source) ||
+          !sameSpan(function.sourceSpan, sourceDefinition.source) ||
+          !sameVisibility(function.visibility, ZC_ASSERT_NONNULL(expectedVisibility)) ||
+          function.linkage != ZC_ASSERT_NONNULL(expectedLinkage)) {
+        return rejectCaptureCall();
+      }
+      // Source shape: leading scalar local, slotless closure alias, zero-arg call.
+      auto closureDefId = definitions.closureDefinitionAt(source.closureAliasInitializer);
+      const auto& sourceCallNode = tree.node(source.value);
+      const ast::NodeId calleeNode(sourceCallNode.payload.words[ast::kCallExpressionCalleeWord]);
+      const ast::NodeList typeArguments{
+          sourceCallNode.payload.words[ast::kCallExpressionTypeArgsFirstWord],
+          sourceCallNode.payload.words[ast::kCallExpressionTypeArgsSizeWord]};
+      const ast::NodeList arguments{sourceCallNode.payload.words[ast::kCallExpressionArgsFirstWord],
+                                    sourceCallNode.payload.words[ast::kCallExpressionArgsSizeWord]};
+      auto capturedBinding =
+          ownerLocalBindingForPattern(definitions, source.capturedLocalPattern, tree);
+      if (closureDefId == zc::none || !tree.contains(source.value) ||
+          tree.node(source.value).kind != ast::SyntaxKind::CallExpression ||
+          !tree.contains(calleeNode) || tree.node(calleeNode).kind != ast::SyntaxKind::IdentExpr ||
+          !tree.contains(typeArguments) || !typeArguments.empty() || !tree.contains(arguments) ||
+          tree.list(arguments).size() != 0 || !tree.contains(source.capturedLocalInitializer) ||
+          !isScalarLiteral(tree.node(source.capturedLocalInitializer).kind) ||
+          capturedBinding == zc::none ||
+          resolveClosureAliasCallee(tree, definitions, bound.bindings(), calleeNode) !=
+              closureDefId) {
+        return rejectCaptureCall();
+      }
+      // Exactly one verified Copy scalar capture naming the leading local.
+      const checker::checked::CheckedCaptureFact* captureFact = nullptr;
+      const binder::MaterializedClosureDefinitionEntry* captureClosureRow = nullptr;
+      for (const auto& closure : definitions.closureDefinitions()) {
+        if (closure.node == source.closureAliasInitializer) {
+          captureClosureRow = &closure;
+          break;
+        }
+      }
+      if (captureClosureRow == nullptr) { return rejectCaptureCall(); }
+      for (const auto& captureEntry : facts.captures().entries()) {
+        if (captureEntry.value.closure != captureClosureRow->closureKey) { continue; }
+        if (captureFact != nullptr) { return rejectCaptureCall(); }
+        captureFact = &captureEntry.value;
+      }
+      if (captureFact == nullptr || captureFact->mode != checker::checked::CaptureMode::Copy ||
+          captureFact->origin != checker::checked::CaptureOrigin::Inferred ||
+          captureFact->capturedType != localRecord.type ||
+          captureFact->capturedType != function.resultType ||
+          !captureFact->target.value().is<binder::OwnerLocalBindingTarget>() ||
+          captureFact->target.value().get<binder::OwnerLocalBindingTarget>().binding !=
+              ZC_ASSERT_NONNULL(capturedBinding)) {
+        return rejectCaptureCall();
+      }
+      auto initializerLiteralIndex = factIndex(facts.literals(), source.capturedLocalInitializer);
+      auto checkedCallIndex = factIndex(facts.calls(), source.value);
+      auto callKey = checkedNodeKey(tree, bound.parsedModule(), source.value);
+      auto callSpan = bound.parsedModule().spanFor(sourceCallNode.range);
+      auto initializerSpan =
+          bound.parsedModule().spanFor(tree.node(source.capturedLocalInitializer).range);
+      auto localSpan = bound.parsedModule().spanFor(tree.node(source.capturedLocalPattern).range);
+      if (initializerLiteralIndex == zc::none || checkedCallIndex == zc::none ||
+          callKey == zc::none || callSpan == zc::none || initializerSpan == zc::none ||
+          localSpan == zc::none) {
+        return rejectCaptureCallMissing();
+      }
+      size_t initializerLiteralSlot = 0;
+      size_t checkedCallSlot = 0;
+      ZC_IF_SOME(value, initializerLiteralIndex) { initializerLiteralSlot = value; }
+      ZC_IF_SOME(value, checkedCallIndex) { checkedCallSlot = value; }
+      const auto& checkedInitializer = facts.literals().entries()[initializerLiteralSlot].value;
+      const auto& invocation = facts.calls().entries()[checkedCallSlot].value.invocation;
+      const auto& selected = invocation.selected.variant();
+      auto dispatchIndex = dispatchFactIndex(candidate.impl->checkedModule.dispatchFacts().facts(),
+                                             ZC_ASSERT_NONNULL(callKey));
+      if (dispatchIndex == zc::none) { return rejectCaptureCallMissing(); }
+      size_t dispatchSlot = 0;
+      ZC_IF_SOME(value, dispatchIndex) { dispatchSlot = value; }
+      const auto& dispatch = candidate.impl->checkedModule.dispatchFacts().facts()[dispatchSlot];
+      const auto& target = dispatch.fact.target.variant();
+      const auto& transform = dispatch.fact.resultTransform.variant();
+      const auto closureId = ZC_ASSERT_NONNULL(closureDefId);
+      if (checkedInitializer.node != source.capturedLocalInitializer ||
+          checkedInitializer.type != expression.type ||
+          !sameConstant(expression.value, checkedInitializer.literal, module, registries,
+                        semanticTypes) ||
+          !sameSpan(checkedInitializer.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan)) ||
+          !sameSpan(localRecord.sourceSpan, ZC_ASSERT_NONNULL(localSpan)) ||
+          !sameSpan(ZC_ASSERT_NONNULL(localRecord.initializerSpan),
+                    ZC_ASSERT_NONNULL(initializerSpan)) ||
+          call.callee != closureId || call.calleeType != invocation.calleeType ||
+          call.arguments.size() != 1 || call.arguments[0].value != zc::none ||
+          call.arguments[0].parameter != zc::none || call.arguments[0].field != zc::none ||
+          call.arguments[0].local != hirLocalId(1) || call.arguments[0].type != localRecord.type ||
+          !sameSpan(call.arguments[0].sourceSpan, ZC_ASSERT_NONNULL(localSpan)) ||
+          !selected.is<checker::checked::DirectCallable>() ||
+          selected.get<checker::checked::DirectCallable>().callee != closureId ||
+          !target.is<checker::dispatch::DirectTarget>() ||
+          target.get<checker::dispatch::DirectTarget>().callee != closureId ||
+          !transform.is<checker::dispatch::IdentityResultTransform>() ||
+          invocation.calleeType != call.calleeType ||
+          invocation.successType != function.resultType ||
+          invocation.resultType != function.resultType || invocation.receiver != zc::none ||
+          invocation.receiverMode != zc::none || invocation.receiverAdjustment != zc::none ||
+          // Zero SOURCE arguments; the single HIR argument is the implicit env value.
+          invocation.arguments.size() != 0 || invocation.substitutions != zc::none ||
+          invocation.witnesses != zc::none || invocation.raises != zc::none ||
+          dispatch.fact.receiver != zc::none || dispatch.fact.arguments.size() != 0 ||
+          dispatch.fact.successType != function.resultType ||
+          dispatch.fact.resultType != function.resultType ||
+          dispatch.fact.substitutions != zc::none || dispatch.fact.witnesses != zc::none ||
+          dispatch.fact.raises != zc::none ||
+          !sameSpan(facts.calls().entries()[checkedCallSlot].value.sourceSpan,
+                    ZC_ASSERT_NONNULL(callSpan)) ||
+          !sameSpan(dispatch.fact.sourceSpan, ZC_ASSERT_NONNULL(callSpan))) {
+        return rejectCaptureCall();
+      }
+      nextFunction += 6;
+      continue;
     }
     // Scalar-local call: `let a: i32 = <literal>; return f(a);`. Fixed six-node
     // preorder: function F, body F+1, local F+2, scalar-literal initializer F+3,

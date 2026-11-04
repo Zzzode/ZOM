@@ -22,9 +22,18 @@ struct LangOptions {
   bool useUnicode;
   bool allowDollarIdentifiers;
   bool supportRegexLiterals;
+  /// \brief Default-off gate for the flagged RFC 0058 single-Copy-scalar
+  /// capturing-closure slice. Session-scoped only: it is deliberately absent
+  /// from every canonical codec and identity key, so it never enters an
+  /// artifact, crate identity, or content digest.
+  bool experimentalCaptures;
   // more...
 
-  LangOptions() : useUnicode(true), allowDollarIdentifiers(false), supportRegexLiterals(true) {}
+  LangOptions()
+      : useUnicode(true),
+        allowDollarIdentifiers(false),
+        supportRegexLiterals(true),
+        experimentalCaptures(false) {}
 };
 
 }  // namespace basic

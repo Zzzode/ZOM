@@ -518,6 +518,8 @@ public:
                    "Disable Unicode support in identifiers")
         .addOption({"allow-dollar-identifiers"}, ZC_BIND_METHOD(*this, enableDollarIdentifiers),
                    "Allow dollar signs in identifiers")
+        .addOption({"experimental-captures"}, ZC_BIND_METHOD(*this, enableExperimentalCaptures),
+                   "Enable the experimental single-Copy-scalar capturing-closure slice")
         .addOption({"no-regex-literals"}, ZC_BIND_METHOD(*this, disableRegexLiterals),
                    "Disable regex literal syntax")
         .expectZeroOrMoreArgs("<source>", ZC_BIND_METHOD(*this, rejectPositionalSource))
@@ -750,6 +752,14 @@ public:
   zc::MainBuilder::Validity enableDollarIdentifiers() {
     langOpts.allowDollarIdentifiers = true;
     packageRequest.languageOptions.allowDollarIdentifiers = true;
+    return true;
+  }
+
+  // Session-scoped experimental gate only: deliberately not copied onto the
+  // package request, so it stays out of the canonical request, crate identity,
+  // and every persisted artifact.
+  zc::MainBuilder::Validity enableExperimentalCaptures() {
+    langOpts.experimentalCaptures = true;
     return true;
   }
 

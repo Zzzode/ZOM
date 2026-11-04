@@ -308,6 +308,15 @@ struct FunctionReturnShape final {
   ast::NodeId closureAliasLet{};
   ast::NodeId closureAliasPattern{};
   ast::NodeId closureAliasInitializer{};
+  // RFC 0058 B1 three-statement capturing-closure-alias shape:
+  // `let x: T = <scalar-literal>; let f = fn() -> T { return x; }; return f();`.
+  // The closure captures the leading scalar local by value; the lowered caller
+  // is one literal-initialized local passed as a single implicit argument of
+  // the closure's direct Source call. The alias statement itself stays slotless.
+  bool returnsCapturingClosureAliasCall = false;
+  ast::NodeId capturedLocalLet{};
+  ast::NodeId capturedLocalPattern{};
+  ast::NodeId capturedLocalInitializer{};
   // Two-statement existential-call shape: a leading existential-initialized
   // local whose initializer is a direct call returning the existential type,
   // passed as the sole argument of a returned direct free-function call:
