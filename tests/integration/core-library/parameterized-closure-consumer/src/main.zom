@@ -1,0 +1,10 @@
+// RFC 0057 slice 1b: a non-capturing closure with one ordinary i32 value
+// parameter lowers to a one-parameter function whose sole statement returns
+// that parameter. The caller passes 42 explicitly through the direct Source
+// call edge; the program exits 42 natively.
+fn entry() -> i32 {
+  let f = fn(n: i32) -> i32 {
+    return n;
+  };
+  return f(42);
+}

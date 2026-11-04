@@ -1138,6 +1138,49 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                               index + 1);
         }
       }
+      // RFC 0057 slice 1b: a non-capturing block-body `fn` closure with one
+      // published ordinary integer parameter is structurally identical to the
+      // one-capture closure on the HIR side (one parameter, one parameter
+      // reference return); the difference is parameter provenance, checked
+      // against the published signature instead of capture facts.
+      const checker::signature::SemanticSignature* closureSignatureEarly = nullptr;
+      for (const auto& candidateSignature : signatures.definitions) {
+        if (candidateSignature.definition == function.definition) {
+          closureSignatureEarly = &candidateSignature;
+          break;
+        }
+      }
+      if (closureSignatureEarly == nullptr) {
+        for (const auto& candidateSignature :
+             candidate.impl->checkedModule.localSignatureFacts().signatures()) {
+          if (candidateSignature.definition == function.definition) {
+            closureSignatureEarly = &candidateSignature;
+            break;
+          }
+        }
+      }
+      if (closureSignatureEarly == nullptr ||
+          !closureSignatureEarly->payload.variant().is<checker::signature::CallableSignature>()) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      const auto& earlyCallable =
+          closureSignatureEarly->payload.variant().get<checker::signature::CallableSignature>();
+      const bool parameterClosure =
+          !closureCaptures && closureIsFunctionExpression && earlyCallable.parameters.size() == 1 &&
+          earlyCallable.receiver == zc::none && earlyCallable.raises == zc::none &&
+          earlyCallable.abi == zc::none;
+      if (!closureCaptures && earlyCallable.parameters.size() != 0 && !parameterClosure) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      if (parameterClosure && closureCaptures) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
       // A one-capture closure occupies four source-preorder node ids (function,
       // body, return, parameter reference); a two-capture closure occupies six
       // (function, body, left parameter reference, right parameter reference,
@@ -1147,7 +1190,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       // (value F+3) and at F+5 for the two-leaf binary shape (left F+2, right
       // F+3, binary F+4).
       const HirNodeId closureReturnId = hirId(expectedFunction + (binaryClosure ? 5 : 2));
-      const size_t expectedParameterCount = orderedCaptureFacts.size();
+      const size_t expectedParameterCount = parameterClosure ? 1 : orderedCaptureFacts.size();
       if (function.node != hirId(expectedFunction) || block.node != hirId(expectedFunction + 1) ||
           function.body != block.node || block.statements.size() != 1 ||
           block.statements[0] != closureReturnId || function.receiver != zc::none ||
@@ -1155,6 +1198,18 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                             ir::IrFailureKind::InvalidFact, module, registries,
                                             index + 1);
+      }
+      if (parameterClosure) {
+        // The one parameter must match the published signature parameter: its
+        // content-addressed key at ordinary position zero and the published
+        // integer scalar type.
+        const auto& publishedParameter = earlyCallable.parameters[0];
+        if (function.parameters[0].key != publishedParameter.parameter ||
+            function.parameters[0].type != publishedParameter.type) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
       }
       for (size_t position = 0; position < orderedCaptureFacts.size(); ++position) {
         // Recompute each synthetic environment key from the closure
@@ -1193,10 +1248,11 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             candidateExpression.node.ordinal() >= expectedFunction + closureStride) {
           continue;
         }
-        if (closureCaptures) {
-          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
-                                              ir::IrFailureKind::AdditionalFact, module, registries,
-                                              index + 1);
+        if (closureCaptures || parameterClosure) {
+          // The single-leaf capture and parameterized shapes carry no scalar
+          // literal expression; their value is a parameter reference (handled
+          // in the loop below).
+          continue;
         }
         if (closureLiteral != zc::none || candidateExpression.node != hirId(expectedFunction + 3)) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
@@ -1210,7 +1266,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             candidateReference.node.ordinal() >= expectedFunction + closureStride) {
           continue;
         }
-        if (!closureCaptures) {
+        if (!closureCaptures && !parameterClosure) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                               ir::IrFailureKind::AdditionalFact, module, registries,
                                               index + 1);
@@ -1261,10 +1317,10 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       }
       const bool closureRecordsComplete =
           closureReturn != zc::none &&
-          (binaryClosure
-               ? (closureLeftParamRef != zc::none && closureRightParamRef != zc::none &&
-                  closureBinary != zc::none)
-               : (closureCaptures ? closureRightParamRef != zc::none : closureLiteral != zc::none));
+          (binaryClosure ? (closureLeftParamRef != zc::none && closureRightParamRef != zc::none &&
+                            closureBinary != zc::none)
+                         : ((closureCaptures || parameterClosure) ? closureRightParamRef != zc::none
+                                                                  : closureLiteral != zc::none));
       if (!closureRecordsComplete) {
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                             ir::IrFailureKind::MissingRequiredFact, module,
@@ -1302,7 +1358,14 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             closureDeclaredValue == closureSource.value &&
             closureTree.contains(closureSource.value);
         if (closureSourceValueValid) {
-          if (!closureCaptures) {
+          if (parameterClosure) {
+            // RFC 0057 slice 1b: the sole statement returns the parameter
+            // identifier; the binding reconciliation below proves it names the
+            // closure's declared parameter.
+            if (closureTree.node(closureSource.value).kind != ast::SyntaxKind::IdentExpr) {
+              closureSourceValueValid = false;
+            }
+          } else if (!closureCaptures) {
             if (!isScalarLiteral(closureTree.node(closureSource.value).kind)) {
               closureSourceValueValid = false;
             }
@@ -1366,6 +1429,38 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             }
           }
         }
+        if (closureSourceValueValid && parameterClosure) {
+          // The return identifier must materialize to the owner-local
+          // CallableParameter binding at the closure's sole parameter node.
+          const ast::NodeId parameterListNode(
+              closureTree.node(closureDefinition.node)
+                  .payload.words[ast::kFunctionExpressionParamsIdWord]);
+          if (!closureTree.contains(parameterListNode)) {
+            closureSourceValueValid = false;
+          } else {
+            const ast::NodeList parameterNodes{
+                closureTree.node(parameterListNode)
+                    .payload.words[ast::kFunctionParameterListParamsFirstWord],
+                closureTree.node(parameterListNode)
+                    .payload.words[ast::kFunctionParameterListParamsSizeWord]};
+            if (parameterNodes.size != 1) {
+              closureSourceValueValid = false;
+            } else {
+              const ast::NodeId parameterNode = closureTree.list(parameterNodes)[0];
+              bool namesParameter = false;
+              ZC_IF_SOME(parameterBinding,
+                         resolvedOwnerLocal(bound.bindings(), closureSource.value)) {
+                for (const auto& local : definitions.ownerLocalBindings()) {
+                  if (local.binding != parameterBinding) { continue; }
+                  namesParameter = local.node == parameterNode &&
+                                   local.site.value().is<binder::DeclarationDefinitionSite>();
+                  break;
+                }
+              }
+              if (!namesParameter) { closureSourceValueValid = false; }
+            }
+          }
+        }
         if (!closureSourceValueValid) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                               ir::IrFailureKind::InvalidFact, module, registries,
@@ -1407,21 +1502,28 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         closureValue = lambdaBody;
         expectedValueSpan = ZC_ASSERT_NONNULL(lambdaValueSpan).clone();
       }
-      if (closureCaptures && !binaryClosure) {
+      if ((closureCaptures || parameterClosure) && !binaryClosure) {
         const auto& paramRecord = ZC_ASSERT_NONNULL(closureRightParamRef);
-        auto environmentRecord = identity::CallableParameterIdentityRecord::from(
-            closureDefinition.key.clone(), identity::CallableParameterPosition::ordinary(0));
-        identity::CallableParameterKey environmentKey =
-            identity::CallableParameterKey::compute(environmentRecord);
+        // The expected parameter key is the synthetic capture key for a
+        // capturing closure, or the published signature key for the slice-1b
+        // parameterized closure.
+        identity::CallableParameterKey expectedKey = [&]() {
+          if (parameterClosure) { return earlyCallable.parameters[0].parameter.clone(); }
+          auto environmentRecord = identity::CallableParameterIdentityRecord::from(
+              closureDefinition.key.clone(), identity::CallableParameterPosition::ordinary(0));
+          return identity::CallableParameterKey::compute(environmentRecord);
+        }();
+        const auto expectedParameterType = parameterClosure ? earlyCallable.parameters[0].type
+                                                            : orderedCaptureFacts[0]->capturedType;
         if (!sameSpan(block.sourceSpan, expectedBlockSpan) ||
             !sameSpan(returnRecord.sourceSpan, expectedReturnSpan) ||
             !sameSpan(paramRecord.sourceSpan, expectedValueSpan) ||
             !sameSpan(function.sourceSpan, closureDefinition.source) ||
             returnRecord.resultType != function.resultType ||
             returnRecord.value != paramRecord.node || paramRecord.type != function.resultType ||
-            paramRecord.type != orderedCaptureFacts[0]->capturedType ||
+            paramRecord.type != expectedParameterType ||
             paramRecord.category != HirValueCategory::Place ||
-            paramRecord.parameter != environmentKey ||
+            paramRecord.parameter != expectedKey ||
             !typeExists(function.resultType, semanticTypes)) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                               ir::IrFailureKind::InvalidFact, module, registries,
@@ -1569,8 +1671,15 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       }
       const auto& closureCallable =
           closureSignature->payload.variant().get<checker::signature::CallableSignature>();
+      // RFC 0057 slice 1b allows exactly one published ordinary parameter;
+      // every other non-capturing closure and all capturing closures stay
+      // parameterless on this edge.
+      const bool expectedParameterClosure =
+          closureCallable.parameters.size() == 1 && closureCallable.receiver == zc::none &&
+          closureCallable.raises == zc::none && closureCallable.abi == zc::none;
       if (closureCallable.success != function.resultType ||
-          closureCallable.parameters.size() != 0 || closureCallable.receiver != zc::none ||
+          (expectedParameterClosure ? !parameterClosure : closureCallable.parameters.size() != 0) ||
+          (!expectedParameterClosure && parameterClosure) || closureCallable.receiver != zc::none ||
           closureCallable.raises != zc::none || closureCallable.abi != zc::none ||
           function.linkage != HirLinkage::Internal ||
           !sameSpan(closureSignature->declarationSpan, closureDefinition.source) ||

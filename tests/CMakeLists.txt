@@ -549,6 +549,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/two-capturing-closure-consumer/Zom.toml::two_capturing_closure_consumer::two_capturing_closure_consumer::42::--experimental-captures"
       --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/parameterized-closure-consumer/Zom.toml::parameterized_closure_consumer::parameterized_closure_consumer::42"
+      --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/call-consumer/Zom.toml::call_consumer::call_consumer::42"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/callarg-consumer/Zom.toml::callarg_consumer::callarg_consumer::7"
