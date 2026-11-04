@@ -728,9 +728,9 @@ ZC_TEST("CompilerSessionTest.FlagOnSingleScalarCaptureLowersToHirAndMir") {
 }
 
 ZC_TEST("CompilerSessionTest.FlagOnRejectedCaptureShapesKeepCapabilityDrain") {
-  // RFC 0058 Part B1 negatives even with the gate on: two captures, a captured
-  // parameter, and an explicit by-value `use []` clause all keep ZOM4099 with
-  // zero incidents.
+  // RFC 0058 Part B1/B2 negatives even with the gate on: a captured parameter,
+  // an explicit by-value `use []` clause, and three captured locals all keep
+  // ZOM4099 with zero incidents.
   const auto drains = [](zc::StringPtr source) {
     auto session = packageSession(source, zc::StringPtr{}, true, true);
     ZC_REQUIRE(session->parseSources());
@@ -740,13 +740,37 @@ ZC_TEST("CompilerSessionTest.FlagOnRejectedCaptureShapesKeepCapabilityDrain") {
               1);
     ZC_EXPECT(session->getIncidents().empty());
   };
-  drains(
-      "fn entry() -> i32 { let x: i32 = 40; let y: i32 = 2; "
-      "let f = fn() -> i32 { return x + y; }; return f(); }\n"_zc);
   drains("fn entry(n: i32) -> i32 { let f = fn() -> i32 { return n; }; return f(); }\n"_zc);
   drains(
       "fn entry() -> i32 { let x: i32 = 42; "
       "let f = fn() use [x] -> i32 { return x; }; return f(); }\n"_zc);
+  drains(
+      "fn entry() -> i32 { let a: i32 = 1; let b: i32 = 2; let c: i32 = 3; "
+      "let f = fn() -> i32 { return a + b + c; }; return f(); }\n"_zc);
+}
+
+ZC_TEST("CompilerSessionTest.FlagOnTwoScalarCapturePassesChecker") {
+  // RFC 0058 Part B2 commit 1 (checker): with the gate on, a closure reading
+  // two initialized Copy i32 locals and combining them in one integer
+  // arithmetic binary publishes two Copy capture facts and produces no
+  // Checker-domain incident. HIR lowering is a later commit, so checkSources
+  // may still reject at the IR stage; the contract here is checker acceptance
+  // and zero incidents, not a fully lowered module.
+  const auto checkerAccepts = [](zc::StringPtr source) {
+    auto session = packageSession(source, zc::StringPtr{}, true, true);
+    ZC_REQUIRE(session->parseSources());
+    ZC_REQUIRE(session->bindSources());
+    session->checkSources();
+    for (const auto& incident : session->getIncidents().descriptors()) {
+      ZC_EXPECT(incident.domain() != basic::CompilerIncidentDomain::Checker);
+    }
+  };
+  checkerAccepts(
+      "fn entry() -> i32 { let a: i32 = 40; let b: i32 = 2; "
+      "let f = fn() -> i32 { return a + b; }; return f(); }\n"_zc);
+  checkerAccepts(
+      "fn entry() -> i32 { let a: i32 = 40; let b: i32 = 2; "
+      "let f = fn() -> i32 { return a; }; return f(); }\n"_zc);
 }
 
 ZC_TEST("CompilerSessionTest.PublishesGenericDirectBorrowSignature") {

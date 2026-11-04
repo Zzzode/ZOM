@@ -5293,7 +5293,6 @@ struct ClosureValueShape final {
 /// \brief The single admitted RFC 0058 B1 capture: one inferred, by-value Copy
 /// scalar owner local read by a block-body function-expression closure.
 struct AdmittedScalarCapture final {
-  binder::AnonymousOwnerLocalKey closure;
   binder::OwnerLocalBindingId binding;
   ast::NodeId referenceNode;
   identity::SemanticTypeId type;
@@ -5302,16 +5301,82 @@ struct AdmittedScalarCapture final {
 bool isMutableOwnerLocal(const driver::module_graph_query::CheckerBoundModuleView& boundModule,
                          ast::NodeId reference);
 
-/// \brief Classifies the flagged RFC 0058 B1 capturing closure.
+/// \brief Classify one captured read of an enclosing owner local. Returns the
+/// admitted capture when the identifier resolves to an initialized, read-only
+/// owner-local scalar (i32/bool) with an explicit declared type.
+zc::Maybe<AdmittedScalarCapture> classifyCapturedScalar(const BodyCheckingInput& input,
+                                                        ast::NodeId valueNode) {
+  const auto& tree = input.boundModule.tree();
+  if (!tree.contains(valueNode) || tree.node(valueNode).kind != ast::SyntaxKind::IdentExpr) {
+    return zc::none;
+  }
+  const auto binding = resolvedOwnerLocal(input.boundModule.bindings(), valueNode);
+  if (binding == zc::none) { return zc::none; }
+  const auto targetBinding = ZC_ASSERT_NONNULL(binding);
+  // A `let mut` local (including an implicitly mutable for-loop init) is
+  // outside the Copy scalar slice.
+  if (isMutableOwnerLocal(input.boundModule, valueNode)) { return zc::none; }
+  const auto initializer = ownerLocalInitializer(input.boundModule, targetBinding);
+  if (initializer == zc::none) { return zc::none; }
+  // Only an explicitly annotated scalar local is admitted; inferring the
+  // captured type keeps draining until the general capture layout lands.
+  auto declared = ownerLocalInitializerDeclaredType(
+      input.boundModule, input.identities, input.semanticTypes, ZC_ASSERT_NONNULL(initializer));
+  if (declared == zc::none) { return zc::none; }
+  const auto capturedType = ZC_ASSERT_NONNULL(declared);
+  auto lookup = input.semanticTypes.get(capturedType);
+  if (!lookup.is<type::SemanticTypeLookup>()) { return zc::none; }
+  const auto& typeData = lookup.get<type::SemanticTypeLookup>().data();
+  if (!typeData.is<type::semantic::PrimitiveTypeData>()) { return zc::none; }
+  const auto primitiveKind = typeData.get<type::semantic::PrimitiveTypeData>().kind;
+  if (primitiveKind != type::semantic::PrimitiveKind::I32 &&
+      primitiveKind != type::semantic::PrimitiveKind::Bool) {
+    return zc::none;
+  }
+  return AdmittedScalarCapture{targetBinding, valueNode, capturedType};
+}
+
+/// \brief True for an integer arithmetic binary operator admitted in a B2
+/// capturing closure body. Comparison and logical operators stay drained.
+bool isIntegerArithmeticBinarySyntax(const ast::Tree& tree, ast::NodeId binary) {
+  if (!tree.contains(binary) || tree.node(binary).kind != ast::SyntaxKind::BinaryExpr) {
+    return false;
+  }
+  auto kind = checker::OperatorKind::fromBinary(static_cast<ast::BinaryOperatorKind>(
+      tree.node(binary).payload.words[ast::kBinaryExprOpWord]));
+  if (kind == zc::none) { return false; }
+  const auto& variant = ZC_ASSERT_NONNULL(kind).variant();
+  if (!variant.is<checker::PrimitiveOperation>()) { return false; }
+  switch (variant.get<checker::PrimitiveOperation>()) {
+    case checker::PrimitiveOperation::Add:
+    case checker::PrimitiveOperation::Sub:
+    case checker::PrimitiveOperation::Mul:
+    case checker::PrimitiveOperation::Div:
+    case checker::PrimitiveOperation::Rem:
+    case checker::PrimitiveOperation::Shl:
+    case checker::PrimitiveOperation::Shr:
+    case checker::PrimitiveOperation::UShr:
+    case checker::PrimitiveOperation::BitAnd:
+    case checker::PrimitiveOperation::BitOr:
+    case checker::PrimitiveOperation::BitXor:
+      return true;
+    default:
+      return false;
+  }
+}
+
+/// \brief Classifies the flagged RFC 0058 B1/B2 capturing closure.
 ///
-/// Returns the captured place only for a block-body `fn` expression with zero
-/// user parameters whose sole statement returns one initialized, read-only
-/// owner-local scalar (i32/bool) declared in the enclosing body, and whose
-/// annotated result type equals that scalar. Every other capture shape (the
-/// paren-arrow spelling, multiple captures, parameters, references, moves,
-/// mutation, explicit `use []`, mismatched result type) returns none so the
-/// caller keeps the existing ZOM4099 capability drain.
-zc::Maybe<AdmittedScalarCapture> admittedSingleScalarCapture(
+/// Returns the ordered (owner-local declaration preorder) set of one or two
+/// inferred by-value Copy scalar captures for a block-body `fn` expression
+/// with zero user parameters. The sole body statement returns either one
+/// captured identifier (`return a;`) or one integer-arithmetic binary whose
+/// two leaves are captured identifiers (`return a + b;`, `a + a` admitted with
+/// one capture). Every other capture shape (the paren-arrow spelling, three
+/// or more captures, captured parameters, references, moves, mutation,
+/// comparisons, nested/non-identifier operands, explicit `use []`, mismatched
+/// result type) returns none so the caller keeps the ZOM4099 capability drain.
+zc::Maybe<zc::Vector<AdmittedScalarCapture>> admittedScalarCaptureSet(
     const BodyCheckingInput& input, const binder::AnonymousOwnerLocalKey& closureKey,
     ast::NodeId closureNode) {
   const auto& tree = input.boundModule.tree();
@@ -5320,7 +5385,7 @@ zc::Maybe<AdmittedScalarCapture> admittedSingleScalarCapture(
     return zc::none;
   }
   const auto& closureExpr = tree.node(closureNode);
-  // Generic parameters and an explicit capture clause are outside B1.
+  // Generic parameters and an explicit capture clause are outside B2.
   if (tree.contains(
           ast::NodeId(closureExpr.payload.words[ast::kFunctionExpressionTypeParamsIdWord])) ||
       tree.contains(
@@ -5347,54 +5412,69 @@ zc::Maybe<AdmittedScalarCapture> admittedSingleScalarCapture(
     return zc::none;
   }
   const ast::NodeId valueNode(tree.node(soleStatement).payload.words[ast::kReturnStmtValueWord]);
-  if (!tree.contains(valueNode) || tree.node(valueNode).kind != ast::SyntaxKind::IdentExpr) {
-    return zc::none;
-  }
-  // The returned identifier must resolve to an enclosing owner local. Capturing
-  // a callable parameter, a global, or an imported symbol keeps draining.
-  const auto binding = resolvedOwnerLocal(input.boundModule.bindings(), valueNode);
-  if (binding == zc::none) { return zc::none; }
-  const auto targetBinding = ZC_ASSERT_NONNULL(binding);
-  // Exactly one capture requirement for this closure, naming that same owner
-  // local. The requirement inventory is key+target deduped, so one matching row
-  // means one inferred free variable.
-  size_t captureCount = 0;
-  for (const auto& requirement : input.requirements.captureRequirements()) {
-    if (requirement.key.closure != closureKey) { continue; }
-    ++captureCount;
-    const auto& target = requirement.key.target.value();
-    if (!target.is<binder::OwnerLocalBindingTarget>() ||
-        target.get<binder::OwnerLocalBindingTarget>().binding != targetBinding) {
+  if (!tree.contains(valueNode)) { return zc::none; }
+  // Collect the body leaves: one identifier, or two identifiers of an integer
+  // arithmetic binary.
+  zc::Vector<ast::NodeId> leafNodes;
+  bool bodyIsBinary = false;
+  if (tree.node(valueNode).kind == ast::SyntaxKind::IdentExpr) {
+    leafNodes.add(valueNode);
+  } else if (tree.node(valueNode).kind == ast::SyntaxKind::BinaryExpr &&
+             isIntegerArithmeticBinarySyntax(tree, valueNode)) {
+    const ast::NodeId left(tree.node(valueNode).payload.words[ast::kBinaryExprLhsWord]);
+    const ast::NodeId right(tree.node(valueNode).payload.words[ast::kBinaryExprRhsWord]);
+    if (!tree.contains(left) || tree.node(left).kind != ast::SyntaxKind::IdentExpr ||
+        !tree.contains(right) || tree.node(right).kind != ast::SyntaxKind::IdentExpr) {
       return zc::none;
     }
-  }
-  if (captureCount != 1) { return zc::none; }
-  // Read-only after capture: a `let mut` local (including an implicitly mutable
-  // for-loop init) is outside the Copy scalar slice.
-  if (isMutableOwnerLocal(input.boundModule, valueNode)) { return zc::none; }
-  const auto initializer = ownerLocalInitializer(input.boundModule, targetBinding);
-  if (initializer == zc::none) { return zc::none; }
-  // Only an explicitly annotated scalar local is admitted; inferring the
-  // captured type keeps draining until the general capture layout lands.
-  auto declared = ownerLocalInitializerDeclaredType(
-      input.boundModule, input.identities, input.semanticTypes, ZC_ASSERT_NONNULL(initializer));
-  if (declared == zc::none) { return zc::none; }
-  const auto capturedType = ZC_ASSERT_NONNULL(declared);
-  auto lookup = input.semanticTypes.get(capturedType);
-  if (!lookup.is<type::SemanticTypeLookup>()) { return zc::none; }
-  const auto& typeData = lookup.get<type::SemanticTypeLookup>().data();
-  if (!typeData.is<type::semantic::PrimitiveTypeData>()) { return zc::none; }
-  const auto primitiveKind = typeData.get<type::semantic::PrimitiveTypeData>().kind;
-  if (primitiveKind != type::semantic::PrimitiveKind::I32 &&
-      primitiveKind != type::semantic::PrimitiveKind::Bool) {
+    leafNodes.add(left);
+    leafNodes.add(right);
+    bodyIsBinary = true;
+  } else {
     return zc::none;
   }
-  // The closure must be an admitted zero-user-parameter callable whose annotated
-  // result is exactly the captured scalar; the environment parameter is a
-  // synthetic HIR construct and is absent from the published signature.
+  // Classify each leaf, deduplicating by owner-local binding (`a + a` is one
+  // capture). At most two distinct captures, bounded by the LIR call ladder.
+  zc::Vector<AdmittedScalarCapture> captured;
+  for (const auto leaf : leafNodes) {
+    auto one = classifyCapturedScalar(input, leaf);
+    if (one == zc::none) { return zc::none; }
+    const auto& candidate = ZC_ASSERT_NONNULL(one);
+    bool duplicate = false;
+    for (const auto& existing : captured) {
+      if (existing.binding == candidate.binding) {
+        duplicate = true;
+        break;
+      }
+    }
+    if (!duplicate) { captured.add(zc::mv(ZC_ASSERT_NONNULL(one))); }
+  }
+  if (captured.size() < 1 || captured.size() > 2) { return zc::none; }
+  // The capture requirement inventory for this closure must name exactly the
+  // classified bindings (one key+target-deduped row per capture).
+  size_t requirementCount = 0;
+  for (const auto& requirement : input.requirements.captureRequirements()) {
+    if (requirement.key.closure != closureKey) { continue; }
+    ++requirementCount;
+    const auto& target = requirement.key.target.value();
+    if (!target.is<binder::OwnerLocalBindingTarget>()) { return zc::none; }
+    const auto requiredBinding = target.get<binder::OwnerLocalBindingTarget>().binding;
+    bool known = false;
+    for (const auto& entry : captured) {
+      if (entry.binding == requiredBinding) {
+        known = true;
+        break;
+      }
+    }
+    if (!known) { return zc::none; }
+  }
+  if (requirementCount != captured.size()) { return zc::none; }
+  // Every captured scalar must have the closure's result type. A binary body is
+  // integer arithmetic, so bool captures are admitted only for a bare return.
   const auto closureDefId = input.boundModule.definitions().closureDefinitionAt(closureNode);
   if (closureDefId == zc::none) { return zc::none; }
   bool signatureAdmitted = false;
+  identity::SemanticTypeId resultType{};
   for (const auto& semanticSignature : input.signatureFacts.signatures()) {
     if (semanticSignature.definition != ZC_ASSERT_NONNULL(closureDefId)) { continue; }
     if (!semanticSignature.payload.variant().is<signature::CallableSignature>()) {
@@ -5402,15 +5482,39 @@ zc::Maybe<AdmittedScalarCapture> admittedSingleScalarCapture(
     }
     const auto& callable = semanticSignature.payload.variant().get<signature::CallableSignature>();
     if (callable.genericParameters.size() != 0 || callable.parameters.size() != 0 ||
-        callable.receiver != zc::none || callable.abi != zc::none || callable.raises != zc::none ||
-        callable.success != capturedType) {
+        callable.receiver != zc::none || callable.abi != zc::none || callable.raises != zc::none) {
       return zc::none;
     }
+    resultType = callable.success;
     signatureAdmitted = true;
     break;
   }
   if (!signatureAdmitted) { return zc::none; }
-  return AdmittedScalarCapture{closureKey.clone(), targetBinding, valueNode, capturedType};
+  for (const auto& entry : captured) {
+    if (entry.type != resultType) { return zc::none; }
+    if (bodyIsBinary) {
+      auto lookup = input.semanticTypes.get(entry.type);
+      if (!lookup.is<type::SemanticTypeLookup>() ||
+          !lookup.get<type::SemanticTypeLookup>().data().is<type::semantic::PrimitiveTypeData>() ||
+          lookup.get<type::SemanticTypeLookup>()
+                  .data()
+                  .get<type::semantic::PrimitiveTypeData>()
+                  .kind != type::semantic::PrimitiveKind::I32) {
+        return zc::none;
+      }
+    }
+  }
+  // Canonical field order: owner-local declaration preorder.
+  for (size_t i = 1; i < captured.size(); ++i) {
+    for (size_t j = 0; j < i; ++j) {
+      if (captured[i].binding.index() < captured[j].binding.index()) {
+        auto temporary = zc::mv(captured[j]);
+        captured[j] = zc::mv(captured[i]);
+        captured[i] = zc::mv(temporary);
+      }
+    }
+  }
+  return captured;
 }
 
 /// \brief Resolves a non-capturing closure literal to its anonymous closure
@@ -5467,12 +5571,13 @@ zc::Maybe<ClosureValueShape> closureValueShape(const BodyCheckingInput& input, a
     }
   }
   if (capturesOuter) {
-    // RFC 0058 B1: a closure reading one enclosing Copy scalar is admitted only
-    // behind the experimental single-capture gate. The by-value environment is
-    // a synthetic leading HIR parameter, so the structural function type built
-    // below stays zero-argument and the direct call keeps its Source edge.
+    // RFC 0058 B1/B2: a closure reading one or two enclosing Copy scalars is
+    // admitted only behind the experimental capture gate. The by-value
+    // environment is a synthetic leading HIR parameter, so the structural
+    // function type built below stays zero-argument and the direct call keeps
+    // its Source edge.
     if (!input.experimentalCaptures ||
-        admittedSingleScalarCapture(input, closureKeyValue, node) == zc::none) {
+        admittedScalarCaptureSet(input, closureKeyValue, node) == zc::none) {
       return zc::none;
     }
   }
@@ -9465,57 +9570,67 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
     return zc::mv(diamondResult);
   }
 
-  // RFC 0058 B1: behind the default-off experimental gate, one inferred by-value
-  // Copy scalar capture per block-body function-expression closure is admitted
-  // and published as a capture fact. Every other capture (multiple captures,
-  // captured parameters, references, moves, mutation, explicit `use []`,
-  // escape) keeps the capability drain below. The `captures` vector stays empty
-  // unless the flag is on and every requirement is admitted.
+  // RFC 0058 B1/B2: behind the default-off experimental gate, an ordered set of
+  // one or two inferred by-value Copy scalar captures per block-body
+  // function-expression closure is admitted and published as one capture fact
+  // per captured binding. Every other capture (three or more captures,
+  // captured parameters, references, moves, mutation, comparisons, explicit
+  // `use []`, escape) keeps the capability drain below. The `captures` vector
+  // stays empty unless the flag is on and every requirement is admitted.
   zc::Vector<checked::CaptureFactMap::Entry> captures;
   zc::Maybe<binder::AnonymousOwnerLocalKey> firstRejectedCaptureClosure;
   bool capturesAllAdmitted = input.experimentalCaptures;
   if (input.experimentalCaptures) {
     for (const auto& requirement : input.requirements.captureRequirements()) {
-      zc::Maybe<AdmittedScalarCapture> admitted;
-      for (const auto& entity : input.boundModule.definitions().anonymousEntities()) {
-        if (entity.key == requirement.key.closure) {
-          admitted = admittedSingleScalarCapture(input, entity.key, entity.node);
+      const auto& closureKey = requirement.key.closure;
+      // Classify each closure once; its whole admitted set is published
+      // together in canonical order.
+      bool alreadyClassified = false;
+      for (const auto& existing : captures) {
+        if (existing.value.closure == closureKey) {
+          alreadyClassified = true;
           break;
         }
       }
-      if (admitted == zc::none) {
+      if (alreadyClassified) { continue; }
+      zc::Maybe<zc::Vector<AdmittedScalarCapture>> admittedSet;
+      for (const auto& entity : input.boundModule.definitions().anonymousEntities()) {
+        if (entity.key == closureKey) {
+          admittedSet = admittedScalarCaptureSet(input, entity.key, entity.node);
+          break;
+        }
+      }
+      if (admittedSet == zc::none) {
         capturesAllAdmitted = false;
         if (firstRejectedCaptureClosure == zc::none) {
-          firstRejectedCaptureClosure = requirement.key.closure.clone();
+          firstRejectedCaptureClosure = closureKey.clone();
         }
         continue;
       }
-      const auto& captured = ZC_ASSERT_NONNULL(admitted);
-      auto capturedSpan =
-          parsedModule.spanFor(input.boundModule.tree().node(captured.referenceNode).range);
-      if (capturedSpan == zc::none) {
-        return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module, 0,
-                               zc::none, captured.referenceNode, zc::none,
-                               factPath(CheckedFactGroup::Capture));
+      for (const auto& captured : ZC_ASSERT_NONNULL(admittedSet)) {
+        auto capturedSpan =
+            parsedModule.spanFor(input.boundModule.tree().node(captured.referenceNode).range);
+        if (capturedSpan == zc::none) {
+          return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module, 0,
+                                 zc::none, captured.referenceNode, zc::none,
+                                 factPath(CheckedFactGroup::Capture));
+        }
+        auto captureKey = checked::CaptureKey{closureKey.clone(),
+                                              binder::BindingTarget::ownerLocal(captured.binding)};
+        zc::Vector<checked::PlaceProjection> projections;
+        captures.add(checked::CaptureFactMap::Entry{
+            captureKey.clone(),
+            checked::CheckedCaptureFact{
+                closureKey.clone(), captureKey.target.clone(),
+                checked::CheckedPlaceFact{
+                    captured.referenceNode,
+                    checked::PlaceRoot(checked::OwnerLocalPlaceRoot{captured.binding}),
+                    zc::mv(projections), captured.type, /*mutablePlace=*/false,
+                    /*movable=*/true},
+                checked::CaptureMode::Copy, checked::CaptureOrigin::Inferred, captured.type,
+                ZC_ASSERT_NONNULL(capturedSpan).clone()},
+            zc::Array<uint8_t>()});
       }
-      // Reuse the requirement key verbatim so the canonical exact-set verifier
-      // (one fact per requirement key) matches without re-deriving target
-      // identity. The classifier already proved the target is this read-only
-      // scalar owner local.
-      auto captureKey = requirement.key.clone();
-      zc::Vector<checked::PlaceProjection> projections;
-      captures.add(checked::CaptureFactMap::Entry{
-          checked::CaptureKey{captureKey.closure.clone(), captureKey.target.clone()},
-          checked::CheckedCaptureFact{
-              captureKey.closure.clone(), captureKey.target.clone(),
-              checked::CheckedPlaceFact{
-                  captured.referenceNode,
-                  checked::PlaceRoot(checked::OwnerLocalPlaceRoot{captured.binding}),
-                  zc::mv(projections), captured.type, /*mutablePlace=*/false,
-                  /*movable=*/true},
-              checked::CaptureMode::Copy, checked::CaptureOrigin::Inferred, captured.type,
-              ZC_ASSERT_NONNULL(capturedSpan).clone()},
-          zc::Array<uint8_t>()});
     }
   }
 
