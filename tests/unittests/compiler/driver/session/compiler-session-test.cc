@@ -886,6 +886,25 @@ ZC_TEST("CompilerSessionTest.MultiParameterNonCapturingClosureKeepsCapabilityDra
       "return f(42); }\n"_zc);
 }
 
+ZC_TEST("CompilerSessionTest.CopiedClosureValueCallPassesCheckingAndDrainsAtHir") {
+  // RFC 0057 slice 1b value carrier: calling a closure value reached through a
+  // whole-local copy chain (`let g = f; g(42)`) resolves to the closure
+  // definition in the body checker, so it produces no type error. HIR does not
+  // yet lower the function-address/indirect-call value path, so the body keeps
+  // the HIR capability drain (one ZOM4099, zero HIR modules, zero incidents).
+  auto session = packageSession(
+      "fn entry() -> i32 { let f = fn(n: i32) -> i32 { return n; }; "
+      "let g = f; return g(42); }\n"_zc);
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(!session->checkSources());
+  ZC_EXPECT(diagnosticCount(*session, diagnostics::DiagID::TypeCheckerTypeMismatch) == 0);
+  ZC_EXPECT(diagnosticCount(*session, diagnostics::DiagID::FunctionBodySemanticsUnavailable) == 1);
+  ZC_EXPECT(session->getVerifiedHirModules().size() == 0);
+  ZC_EXPECT(session->getIncidents().empty());
+}
+
 ZC_TEST("CompilerSessionTest.ReferenceParameterClosureKeepsCheckerCapabilityDrain") {
   // RFC 0057 slice 1b boundary: a reference-typed closure parameter needs the
   // reference-call ABI of a later slice. The closure publishes no signature,

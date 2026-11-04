@@ -5644,13 +5644,52 @@ zc::Maybe<DirectCallableShape> directCallableShape(const BodyCheckingInput& inpu
     // applies unchanged. Function-typed *parameters* stay rejected: their
     // initializer is not a closure literal and the call would need the
     // indirect-call ABI from a later slice.
+    //
+    // RFC 0057 slice 1b value carrier: the local may instead be one link in a
+    // bounded chain of whole-local copies whose origin is a closure literal
+    // (`let f = fn ...; let g = f; g(42)`). The chain is read-only here: the
+    // closure value ultimately named is the same anonymous definition.
     if (input.boundModule.tree().contains(calleeNode) &&
         input.boundModule.tree().node(calleeNode).kind == ast::SyntaxKind::IdentExpr) {
       const auto local = resolvedOwnerLocal(input.boundModule.bindings(), calleeNode);
       if (local != zc::none) {
         const auto initializer = ownerLocalInitializer(input.boundModule, ZC_ASSERT_NONNULL(local));
+        zc::Maybe<ast::NodeId> closureInitializer;
         if (initializer != zc::none) {
-          auto closureShape = closureValueShape(input, ZC_ASSERT_NONNULL(initializer));
+          // Follow the bounded alias chain of identifier initializers until
+          // one names a closure literal. Every hop must resolve to a distinct
+          // owner local, so a cycle or a non-identifier/non-closure origin
+          // fails closed onto the capability drain.
+          ast::NodeId current = ZC_ASSERT_NONNULL(initializer);
+          zc::Vector<ast::NodeId> visited;
+          for (uint32_t hops = 0;; ++hops) {
+            if (!input.boundModule.tree().contains(current) ||
+                hops > input.boundModule.definitions().ownerLocalBindings().size()) {
+              break;
+            }
+            const auto currentKind = input.boundModule.tree().node(current).kind;
+            if (currentKind == ast::SyntaxKind::FunctionExpression ||
+                currentKind == ast::SyntaxKind::LambdaExpression) {
+              closureInitializer = current;
+              break;
+            }
+            if (currentKind != ast::SyntaxKind::IdentExpr) { break; }
+            bool cycle = false;
+            for (const auto seen : visited) {
+              if (seen == current) { cycle = true; }
+            }
+            if (cycle) { break; }
+            visited.add(current);
+            const auto nextLocal = resolvedOwnerLocal(input.boundModule.bindings(), current);
+            if (nextLocal == zc::none) { break; }
+            const auto nextInitializer =
+                ownerLocalInitializer(input.boundModule, ZC_ASSERT_NONNULL(nextLocal));
+            if (nextInitializer == zc::none) { break; }
+            current = ZC_ASSERT_NONNULL(nextInitializer);
+          }
+        }
+        if (closureInitializer != zc::none) {
+          auto closureShape = closureValueShape(input, ZC_ASSERT_NONNULL(closureInitializer));
           if (closureShape != zc::none) {
             auto data = lookupTypeData(input, ZC_ASSERT_NONNULL(closureShape).functionType);
             if (data != zc::none) {
