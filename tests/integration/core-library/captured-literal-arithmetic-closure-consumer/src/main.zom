@@ -1,0 +1,15 @@
+// RFC 0057 slice 2 capture-plus-literal form: a zero-parameter closure that
+// captures one Copy scalar by value and returns one arithmetic operation over
+// the captured slot and an integer literal. It is reached through a
+// whole-local copy chain; the indirect call passes the captured local as its
+// sole synthetic by-value environment argument and the literal is folded into
+// the closure body. The program exits 42 (41 plus 1) through the
+// indirect-call ABI (flagged experiment).
+fn entry() -> i32 {
+  let a: i32 = 41;
+  let f = fn() -> i32 {
+    return a + 1;
+  };
+  let g = f;
+  return g();
+}
