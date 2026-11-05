@@ -2806,6 +2806,31 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
     }
   }
   int64_t sequentialValueNodeExcess = 0;
+  // RFC 0057 slice 2 captured closure-value callers: each leading captured
+  // scalar local pools one literal expression on the right that is consumed as
+  // an implicit by-value argument of the trailing indirect call. The shared
+  // equation credits neither the local binding nor the local-reference
+  // argument, so each such literal needs one left-hand credit.
+  int64_t capturingValueCallValueNodes = 0;
+  for (const auto& valueFunction : hirModule.functions()) {
+    auto maybeValueBlock = blockFor(hirModule, valueFunction.body);
+    if (maybeValueBlock == zc::none || ZC_ASSERT_NONNULL(maybeValueBlock).statements.size() == 0) {
+      continue;
+    }
+    const auto& valueBlock = ZC_ASSERT_NONNULL(maybeValueBlock);
+    auto valueReturn =
+        returnFor(hirModule, valueBlock.statements[valueBlock.statements.size() - 1]);
+    if (valueReturn == zc::none) { continue; }
+    auto valueIndirectCall = indirectCallFor(hirModule, ZC_ASSERT_NONNULL(valueReturn).value);
+    if (valueIndirectCall == zc::none) { continue; }
+    for (const auto& argument : ZC_ASSERT_NONNULL(valueIndirectCall).arguments) {
+      if (argument.value == zc::none && argument.parameter == zc::none &&
+          argument.local != zc::none && argument.field == zc::none &&
+          argument.comparisonOperation == zc::none) {
+        ++capturingValueCallValueNodes;
+      }
+    }
+  }
   // A trailing write whose value copies an earlier local pools a localReference
   // node that the shared equation counts on neither side, while its write
   // statement subtracts one on the right. Each such write needs one right-hand
@@ -3139,7 +3164,7 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
       sequentialValueNodeExcess + directAggregateCallValueNodes +
       leadingLocalConditionalValueNodeExcess + forLoopAccumulatorCorrection +
       rawPointerWriteExcess + primitiveBinaryLocalValueNodeBalance +
-      diamondConditionLocalOperandBalance;
+      diamondConditionLocalOperandBalance + capturingValueCallValueNodes;
   const int64_t rhsChecksum =
       static_cast<int64_t>(hirModule.expressions().size() + hirModule.calls().size() +
                            hirModule.closureAddresses().size() + hirModule.indirectCalls().size() +
