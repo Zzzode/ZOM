@@ -8030,50 +8030,130 @@ zc::Maybe<Module> MirToLirLowering::lowerCodePointerCallModule(
     if (originId == zc::none) { return zc::none; }
   }
 
-  // Every entry statement must be a StorageLive/StorageDead of a chain or
-  // result local or one of the chain Initialize assigns, in source order.
+  // Every entry statement must be a StorageLive/StorageDead of a captured,
+  // chain, or result local, an Initialize assign of one captured local from a
+  // matching constant, or one of the chain Initialize assigns in source order.
   zc::Vector<mir::MirLocalId> chainOrder;
   chainOrder.add(ZC_ASSERT_NONNULL(originId));
   for (size_t index = reverseChain.size(); index > 0; --index) {
     chainOrder.add(reverseChain[index - 1]);
   }
-  auto namesChainOrResult = [&](mir::MirLocalId id) -> bool {
+  // Leading captured locals: every dense local ordinal before the origin that
+  // is a UserLocal, each initialized from a constant exactly once.
+  struct CapturedLocal {
+    mir::MirLocalId id;
+    Operand constant;
+  };
+  zc::Vector<CapturedLocal> capturedLocals;
+  {
+    size_t localIndexCursor = 0;
+    while (caller.locals[localIndexCursor].id.ordinal() != ZC_ASSERT_NONNULL(originId).ordinal()) {
+      const auto& local = caller.locals[localIndexCursor];
+      if (local.kind != mir::MirLocalKind::UserLocal ||
+          local.id.ordinal() != localIndexCursor + 1) {
+        return zc::none;
+      }
+      auto carrier = scalarCarrierFor(local.type, semanticTypes);
+      if (carrier == zc::none) { return zc::none; }
+      const mir::MirRvalue* initializer = nullptr;
+      for (const auto& statement : entry.statements) {
+        if (statement.kind() != mir::MirStatementKind::Assign) { continue; }
+        const auto& assignment = statement.assignmentValue();
+        if (assignment.destination.local() != local.id) { continue; }
+        if (initializer != nullptr) { return zc::none; }
+        initializer = &assignment.value;
+      }
+      if (initializer == nullptr || initializer->kind() != mir::MirRvalueKind::Use ||
+          initializer->useValue().operand.kind() != mir::MirOperandKind::Constant ||
+          initializer->useValue().operand.constantValue().type != local.type) {
+        return zc::none;
+      }
+      auto lowered = lirOperandFor(initializer->useValue().operand, ZC_REQUIRE_NONNULL(carrier));
+      if (lowered == zc::none) { return zc::none; }
+      capturedLocals.add(CapturedLocal{local.id, zc::mv(ZC_ASSERT_NONNULL(lowered))});
+      ++localIndexCursor;
+    }
+  }
+  const size_t capturedCount = capturedLocals.size();
+  if (capturedCount > 2) { return zc::none; }
+  auto namesCapturedChainOrResult = [&](mir::MirLocalId id) -> bool {
     if (id == resultId) { return true; }
+    for (const auto& captured : capturedLocals) {
+      if (captured.id == id) { return true; }
+    }
     for (const auto& link : chainOrder) {
       if (link == id) { return true; }
     }
     return false;
   };
+  size_t capturedAssignPosition = 0;
   size_t chainAssignPosition = 0;
   for (const auto& statement : entry.statements) {
     if (statement.kind() == mir::MirStatementKind::StorageLive ||
         statement.kind() == mir::MirStatementKind::StorageDead) {
-      if (!namesChainOrResult(statement.storageLocal())) { return zc::none; }
+      if (!namesCapturedChainOrResult(statement.storageLocal())) { return zc::none; }
       continue;
     }
     if (statement.kind() != mir::MirStatementKind::Assign) { return zc::none; }
     const auto& assignment = statement.assignmentValue();
-    if (assignment.destination.projections().size() != 0 ||
-        assignment.destination.local() != chainOrder[chainAssignPosition]) {
-      return zc::none;
+    if (assignment.destination.projections().size() != 0) { return zc::none; }
+    if (capturedAssignPosition < capturedCount &&
+        assignment.destination.local() == capturedLocals[capturedAssignPosition].id) {
+      ++capturedAssignPosition;
+      continue;
     }
-    ++chainAssignPosition;
+    if (chainAssignPosition < chainOrder.size() &&
+        assignment.destination.local() == chainOrder[chainAssignPosition]) {
+      ++chainAssignPosition;
+      continue;
+    }
+    return zc::none;
   }
-  if (chainAssignPosition != chainOrder.size()) { return zc::none; }
+  if (capturedAssignPosition != capturedCount || chainAssignPosition != chainOrder.size()) {
+    return zc::none;
+  }
 
-  // The declared local set must be exactly the chain locals plus the result
-  // local; their ordinals are dense starting at one.
-  if (caller.locals.size() != chainOrder.size() + 1) { return zc::none; }
+  // The declared local set must be exactly the captured locals, the chain
+  // locals, and the result local; their ordinals are dense starting at one.
+  if (caller.locals.size() != capturedCount + chainOrder.size() + 1) { return zc::none; }
   for (size_t index = 0; index < caller.locals.size(); ++index) {
     if (caller.locals[index].id.ordinal() != index + 1) { return zc::none; }
   }
+  // Local-use call arguments must name the captured locals in order;
+  // constant arguments belong to the non-capturing path. The two forms must
+  // not mix.
+  bool constantArguments = false;
+  bool localArguments = false;
+  for (size_t index = 0; index < pointerCall.arguments.size(); ++index) {
+    const auto& argument = pointerCall.arguments[index];
+    if (argument.kind() == mir::MirOperandKind::Constant) {
+      constantArguments = true;
+    } else {
+      if (argument.kind() != mir::MirOperandKind::Copy &&
+          argument.kind() != mir::MirOperandKind::Move) {
+        return zc::none;
+      }
+      localArguments = true;
+    }
+  }
+  if (constantArguments == localArguments) { return zc::none; }
+  if (localArguments && pointerCall.arguments.size() != capturedCount) { return zc::none; }
+  if (!localArguments && capturedCount != 0) { return zc::none; }
 
   zc::Vector<Operand> argumentOperands;
   for (size_t index = 0; index < parameterCount; ++index) {
     const auto& argument = pointerCall.arguments[index];
-    if (argument.kind() != mir::MirOperandKind::Constant ||
-        argument.constantValue().type != callee.locals[index].type) {
-      return zc::none;
+    if (constantArguments) {
+      if (argument.kind() != mir::MirOperandKind::Constant ||
+          argument.constantValue().type != callee.locals[index].type) {
+        return zc::none;
+      }
+    } else {
+      if (argument.place().projections().size() != 0 ||
+          argument.place().local() != capturedLocals[index].id ||
+          argument.place().rootType() != callee.locals[index].type) {
+        return zc::none;
+      }
     }
     auto lowered = lirOperandFor(argument, parameterCarriers[index]);
     if (lowered == zc::none) { return zc::none; }
@@ -8119,12 +8199,17 @@ zc::Maybe<Module> MirToLirLowering::lowerCodePointerCallModule(
                     zc::mv(parameters), zc::mv(locals), zc::mv(calleeBlocks));
   }();
 
-  // Function 0: the caller. Its entry materializes the callee address into the
-  // chain origin, copies it through each alias local, then calls through the
-  // final pointer slot with the constant arguments, stores the scalar result,
-  // and continues to the return.
+  // Function 0: the caller. Its entry initializes each captured scalar local,
+  // materializes the callee address into the chain origin, copies it through
+  // each alias local, then calls through the final pointer slot with the
+  // constant or captured-local arguments, stores the scalar result, and
+  // continues to the return.
   {
     zc::Vector<Statement> entryStatements;
+    for (size_t index = 0; index < capturedCount; ++index) {
+      entryStatements.add(Statement::assign(capturedLocals[index].id.ordinal(),
+                                            zc::mv(capturedLocals[index].constant)));
+    }
     // The callee is the second function of this module, hence ordinal 2.
     entryStatements.add(
         Statement::functionSymbolAddr(chainOrder[0].ordinal(), /*functionOrdinal=*/2));
@@ -8144,6 +8229,11 @@ zc::Maybe<Module> MirToLirLowering::lowerCodePointerCallModule(
                                 Terminator::returnLocal(resultOrdinal)));
     zc::Vector<Local> parameters;
     zc::Vector<Local> locals;
+    for (const auto& captured : capturedLocals) {
+      auto carrier = scalarCarrierFor(caller.locals[captured.id.ordinal() - 1].type, semanticTypes);
+      if (carrier == zc::none) { return zc::none; }
+      locals.add(Local(captured.id.ordinal(), ZC_REQUIRE_NONNULL(carrier)));
+    }
     for (const auto& link : chainOrder) {
       locals.add(Local(link.ordinal(), ValueType::pointer(0)));
     }
