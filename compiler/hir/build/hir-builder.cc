@@ -13510,21 +13510,22 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       }
       const auto& closureCallable =
           closureSignature->payload.variant().get<checker::signature::CallableSignature>();
-      // RFC 0057 slice 1b: a non-capturing block-body `fn` closure with one or
-      // two ordinary integer value parameters lowers to a parameterized
-      // function whose sole statement returns one of those parameters. The
-      // parameter count ceiling matches the scalar call ladder width
-      // (lir::kMaxCallArguments); wider closures keep the capability drain.
-      // Capturing closures and every other shape keep their existing gates.
+      // RFC 0057 slice 1b: a non-capturing closure with one or two ordinary
+      // integer value parameters lowers to a parameterized function whose sole
+      // statement returns one of those parameters. Both admitted spellings
+      // qualify: the block-body `fn` expression returns the parameter through a
+      // source block and return, and the expression-body paren-arrow lambda
+      // names it as its sole expression. The parameter count ceiling matches
+      // the scalar call ladder width (lir::kMaxCallArguments); wider closures
+      // keep the capability drain. A block-body lambda and any other expression
+      // body keep their existing gates, as do capturing closures.
       constexpr size_t kMaxScalarClosureParameters = 2;
       const size_t closureParameterCount = closureCallable.parameters.size();
-      const bool parameterClosure = closureParameterCount >= 1 &&
-                                    closureParameterCount <= kMaxScalarClosureParameters &&
-                                    closureIsFunctionExpression;
-      if ((closureParameterCount > kMaxScalarClosureParameters ||
-           closureCallable.receiver != zc::none || closureCallable.raises != zc::none ||
-           closureCallable.abi != zc::none) ||
-          (closureParameterCount >= 1 && !closureIsFunctionExpression)) {
+      const bool parameterClosure =
+          closureParameterCount >= 1 && closureParameterCount <= kMaxScalarClosureParameters;
+      if (closureParameterCount > kMaxScalarClosureParameters ||
+          closureCallable.receiver != zc::none || closureCallable.raises != zc::none ||
+          closureCallable.abi != zc::none) {
         return rejectClosureCapability();
       }
       // RFC 0058 B1/B2: a block-body function expression with one or two
@@ -13647,19 +13648,56 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         closureReturnSpan = ZC_ASSERT_NONNULL(returnSpan).clone();
         closureValueSpan = ZC_ASSERT_NONNULL(valueSpan).clone();
       } else if (parameterClosure) {
-        // RFC 0057 slice 1b: a block-body function expression with one or two
-        // ordinary integer value parameters whose sole statement returns one
-        // of those parameters. The body leaf must resolve on the owner-local
-        // CallableParameter rail to one of the closure's declared parameters.
-        auto closureBodyShape = functionReturnShape(closureTree, closureTree.node(closure.node));
-        if (closureBodyShape == zc::none) { return rejectClosureCapability(); }
-        const FunctionReturnShape& closureShape = ZC_ASSERT_NONNULL(closureBodyShape);
-        const auto& closureBlock = closureTree.node(closureShape.body);
-        const ast::NodeList closureStatements{
-            closureBlock.payload.words[ast::kBlockStmtStmtsFirstWord],
-            closureBlock.payload.words[ast::kBlockStmtStmtsSizeWord]};
+        // The sole body value is an identifier that must resolve on the
+        // owner-local CallableParameter rail to one of this closure's declared
+        // parameters, materialized at that parameter's declaration site. The
+        // block-body `fn` spelling reaches it through one return statement; the
+        // expression-body lambda reaches it as its sole expression and anchors
+        // no source block or return.
+        const auto parameterListWord = closureIsFunctionExpression
+                                           ? ast::kFunctionExpressionParamsIdWord
+                                           : ast::kLambdaExpressionParamsIdWord;
+        ast::NodeId parameterClosureValue;
+        ast::NodeId parameterClosureBody;
+        ast::NodeId parameterClosureReturn;
+        if (closureIsFunctionExpression) {
+          auto closureBodyShape = functionReturnShape(closureTree, closureTree.node(closure.node));
+          if (closureBodyShape == zc::none) { return rejectClosureCapability(); }
+          const FunctionReturnShape& closureShape = ZC_ASSERT_NONNULL(closureBodyShape);
+          const auto& closureBlock = closureTree.node(closureShape.body);
+          const ast::NodeList closureStatements{
+              closureBlock.payload.words[ast::kBlockStmtStmtsFirstWord],
+              closureBlock.payload.words[ast::kBlockStmtStmtsSizeWord]};
+          const ast::NodeId declaredReturnValue(closureTree.node(closureShape.returnStatement)
+                                                    .payload.words[ast::kReturnStmtValueWord]);
+          if (!closureTree.contains(closureStatements) || closureStatements.size != 1 ||
+              !closureTree.contains(closureShape.returnStatement) ||
+              !closureTree.contains(closureShape.value) ||
+              closureTree.node(closureShape.returnStatement).kind != ast::SyntaxKind::ReturnStmt ||
+              declaredReturnValue != closureShape.value ||
+              closureTree.node(closureShape.value).kind != ast::SyntaxKind::IdentExpr) {
+            return rejectClosureCapability();
+          }
+          auto soleItem = statementItem(closureTree, closureTree.list(closureStatements)[0]);
+          if (soleItem == zc::none || ZC_ASSERT_NONNULL(soleItem) != closureShape.returnStatement) {
+            return rejectClosureCapability();
+          }
+          parameterClosureValue = closureShape.value;
+          parameterClosureBody = closureShape.body;
+          parameterClosureReturn = closureShape.returnStatement;
+        } else {
+          const ast::NodeId lambdaBlock(
+              closureTree.node(closure.node).payload.words[ast::kLambdaExpressionBodyWord]);
+          const ast::NodeId lambdaBody(
+              closureTree.node(closure.node).payload.words[ast::kLambdaExpressionExprBodyWord]);
+          if (closureTree.contains(lambdaBlock) || !closureTree.contains(lambdaBody) ||
+              closureTree.node(lambdaBody).kind != ast::SyntaxKind::IdentExpr) {
+            return rejectClosureCapability();
+          }
+          parameterClosureValue = lambdaBody;
+        }
         const ast::NodeId closureParameterListId(
-            closureTree.node(closure.node).payload.words[ast::kFunctionExpressionParamsIdWord]);
+            closureTree.node(closure.node).payload.words[parameterListWord]);
         if (!closureTree.contains(closureParameterListId) ||
             closureTree.node(closureParameterListId).kind !=
                 ast::SyntaxKind::FunctionParameterList) {
@@ -13670,26 +13708,11 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                 .payload.words[ast::kFunctionParameterListParamsFirstWord],
             closureTree.node(closureParameterListId)
                 .payload.words[ast::kFunctionParameterListParamsSizeWord]};
-        const ast::NodeId declaredReturnValue(closureTree.node(closureShape.returnStatement)
-                                                  .payload.words[ast::kReturnStmtValueWord]);
-        if (!closureTree.contains(closureStatements) || closureStatements.size != 1 ||
-            !closureTree.contains(closureShape.returnStatement) ||
-            !closureTree.contains(closureShape.value) ||
-            closureTree.node(closureShape.returnStatement).kind != ast::SyntaxKind::ReturnStmt ||
-            declaredReturnValue != closureShape.value ||
-            closureTree.node(closureShape.value).kind != ast::SyntaxKind::IdentExpr ||
-            closureParameterNodes.size != closureParameterCount) {
+        if (closureParameterNodes.size != closureParameterCount) {
           return rejectClosureCapability();
         }
-        auto soleItem = statementItem(closureTree, closureTree.list(closureStatements)[0]);
-        if (soleItem == zc::none || ZC_ASSERT_NONNULL(soleItem) != closureShape.returnStatement) {
-          return rejectClosureCapability();
-        }
-        // The return identifier must bind to one of this closure's declared
-        // parameters, materialized on the owner-local CallableParameter rail at
-        // that parameter's declaration site.
         bool namesClosureParameter = false;
-        ZC_IF_SOME(parameterBinding, resolvedOwnerLocal(bound.bindings(), closureShape.value)) {
+        ZC_IF_SOME(parameterBinding, resolvedOwnerLocal(bound.bindings(), parameterClosureValue)) {
           for (size_t parameterIndex = 0; parameterIndex < closureParameterCount;
                ++parameterIndex) {
             const ast::NodeId parameterNode =
@@ -13707,19 +13730,22 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           }
         }
         if (!namesClosureParameter) { return rejectClosureCapability(); }
-        auto bodySpan = bound.parsedModule().spanFor(closureTree.node(closureShape.body).range);
-        auto returnSpan =
-            bound.parsedModule().spanFor(closureTree.node(closureShape.returnStatement).range);
-        auto valueSpan = bound.parsedModule().spanFor(closureTree.node(closureShape.value).range);
-        if (bodySpan == zc::none || returnSpan == zc::none || valueSpan == zc::none) {
-          return rejectClosureCapability();
-        }
-        hirBodyAnchor = closureShape.body;
-        hirReturnAnchor = closureShape.returnStatement;
-        closureValue = closureShape.value;
-        closureBodySpan = ZC_ASSERT_NONNULL(bodySpan).clone();
-        closureReturnSpan = ZC_ASSERT_NONNULL(returnSpan).clone();
+        auto valueSpan =
+            bound.parsedModule().spanFor(closureTree.node(parameterClosureValue).range);
+        if (valueSpan == zc::none) { return rejectClosureCapability(); }
+        closureValue = parameterClosureValue;
         closureValueSpan = ZC_ASSERT_NONNULL(valueSpan).clone();
+        if (closureIsFunctionExpression) {
+          auto bodySpan =
+              bound.parsedModule().spanFor(closureTree.node(parameterClosureBody).range);
+          auto returnSpan =
+              bound.parsedModule().spanFor(closureTree.node(parameterClosureReturn).range);
+          if (bodySpan == zc::none || returnSpan == zc::none) { return rejectClosureCapability(); }
+          hirBodyAnchor = parameterClosureBody;
+          hirReturnAnchor = parameterClosureReturn;
+          closureBodySpan = ZC_ASSERT_NONNULL(bodySpan).clone();
+          closureReturnSpan = ZC_ASSERT_NONNULL(returnSpan).clone();
+        }
       } else if (closureIsFunctionExpression) {
         // Non-capturing zero-parameter block-body function expression: the
         // sole statement returns a scalar literal.

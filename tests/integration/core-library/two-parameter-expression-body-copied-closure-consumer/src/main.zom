@@ -1,0 +1,11 @@
+// RFC 0057 slice 1b: an expression-body paren-arrow lambda with two ordinary
+// i32 value parameters reached through a whole-local copy chain. The origin
+// local holds the closure address, the copy local holds the same pointer, and
+// the trailing call invokes the closure through the final slot with two
+// explicit arguments; the sole expression names the first parameter. The
+// program exits 40 natively through the indirect-call ABI.
+fn entry() -> i32 {
+  let f = (a: i32, b: i32) -> i32 => a;
+  let g = f;
+  return g(40, 2);
+}

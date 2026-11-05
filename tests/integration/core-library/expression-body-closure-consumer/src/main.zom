@@ -1,0 +1,9 @@
+// RFC 0057 slice 1b: an expression-body paren-arrow lambda with one ordinary
+// i32 value parameter names that parameter as its sole expression. It lowers
+// to a one-parameter function whose sole statement returns that parameter and
+// the alias call passes the literal through the direct Source call edge. The
+// program exits 42 natively.
+fn entry() -> i32 {
+  let f = (n: i32) -> i32 => n;
+  return f(42);
+}

@@ -664,17 +664,20 @@ ZC_TEST("CompilerSessionTest.LowersZeroCaptureClosureAliasCallToHirAndMir") {
   expectLowered("fn entry() -> i32 { let f = () -> i32 => 42; return f(); }\n"_zc);
 }
 
-ZC_TEST("CompilerSessionTest.ParameterizedLambdaClosureKeepsCapabilityDrain") {
-  // RFC 0058 Part B0-3 lowers only the zero-parameter form. A one-parameter
-  // expression-body lambda publishes no closure signature, so it keeps the
-  // per-definition capability drain (ZOM4099) and must produce no incident.
-  auto session =
-      packageSession("fn entry() -> i32 { let f = (x: i32) -> i32 => x; return f(1); }\n"_zc);
+ZC_TEST("CompilerSessionTest.ParameterizedBlockBodyLambdaClosureKeepsCapabilityDrain") {
+  // RFC 0057 slice 1b admits a parameterized expression-body paren-arrow
+  // lambda whose sole expression is a parameter reference, but a block-body
+  // paren-arrow lambda stays outside the admitted closure rail. It keeps the
+  // per-definition capability drain (ZOM4099) and produces no incident.
+  auto session = packageSession(
+      "fn entry() -> i32 { let f = (x: i32) -> i32 => { return x; }; "
+      "return f(1); }\n"_zc);
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
   ZC_EXPECT(!session->checkSources());
   ZC_EXPECT(diagnosticCount(*session, diagnostics::DiagID::FunctionBodySemanticsUnavailable) == 1);
+  ZC_EXPECT(session->getVerifiedHirModules().size() == 0);
   ZC_EXPECT(session->getIncidents().empty());
 }
 
@@ -899,8 +902,8 @@ ZC_TEST("CompilerSessionTest.OverTwoParameterClosureKeepsCapabilityDrain") {
   // RFC 0057 slice 1b boundary: the scalar call ladder admits at most two
   // ordinary closure parameters. A three-parameter closure type-checks (zero
   // ZOM4009) but keeps the HIR capability drain, with zero published HIR
-  // modules and zero incidents. The expression-body paren-arrow lambda with a
-  // parameter is likewise outside the admitted block-body slice.
+  // modules and zero incidents. A block-body paren-arrow lambda keeps the
+  // drain because only the expression-body spelling is admitted.
   const auto drains = [](zc::StringPtr source) {
     auto session = packageSession(source);
     ZC_REQUIRE(session->parseSources());
@@ -916,8 +919,78 @@ ZC_TEST("CompilerSessionTest.OverTwoParameterClosureKeepsCapabilityDrain") {
       "fn entry() -> i32 { let f = fn(a: i32, b: i32, c: i32) -> i32 { return a; }; "
       "return f(1, 2, 3); }\n"_zc);
   drains(
+      "fn entry() -> i32 { let f = (n: i32) -> i32 => { return n; }; "
+      "return f(42); }\n"_zc);
+}
+
+ZC_TEST("CompilerSessionTest.ExpressionBodyLambdaParameterLowersToHirAndMir") {
+  // RFC 0057 slice 1b: an expression-body paren-arrow lambda with one ordinary
+  // integer value parameter whose sole expression names that parameter lowers
+  // end to end to the one-parameter parameter-reference-return HIR function;
+  // the lambda anchors no source block or return.
+  auto session = packageSession(
       "fn entry() -> i32 { let f = (n: i32) -> i32 => n; "
       "return f(42); }\n"_zc);
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(session->checkSources());
+  ZC_EXPECT(!session->hasDiagnosticErrors());
+  ZC_EXPECT(session->getIncidents().empty());
+  ZC_REQUIRE(session->getVerifiedHirModules().size() == 1);
+  const auto& hir = session->getVerifiedHirModules()[0];
+  ZC_EXPECT(hir.functions().size() == 2);
+  size_t parameterBearingFunctions = 0;
+  size_t closureParameterTotal = 0;
+  for (const auto& function : hir.functions()) {
+    if (function.parameters.size() == 0) { continue; }
+    ++parameterBearingFunctions;
+    closureParameterTotal += function.parameters.size();
+  }
+  ZC_EXPECT(parameterBearingFunctions == 1);
+  ZC_EXPECT(closureParameterTotal == 1);
+  ZC_EXPECT(hir.calls().size() == 1);
+  ZC_EXPECT(hir.calls()[0].arguments.size() == 1);
+  // A non-parameter-reference expression body keeps the capability drain.
+  auto rejected = packageSession(
+      "fn entry() -> i32 { let f = (x: i32) -> i32 => x + 1; "
+      "return f(41); }\n"_zc);
+  ZC_REQUIRE(rejected->parseSources());
+  ZC_REQUIRE(rejected->bindSources());
+  ZC_EXPECT(!rejected->checkSources());
+  ZC_EXPECT(diagnosticCount(*rejected, diagnostics::DiagID::FunctionBodySemanticsUnavailable) == 1);
+  ZC_EXPECT(rejected->getVerifiedHirModules().size() == 0);
+}
+
+ZC_TEST("CompilerSessionTest.TwoParameterExpressionBodyCopiedLambdaLowersToHirAndMir") {
+  // RFC 0057 slice 1b value carrier: a two-parameter expression-body
+  // paren-arrow lambda whose sole expression names its first parameter,
+  // reached through a whole-local copy chain, lowers through the
+  // closure-address/indirect-call value path with two literal arguments.
+  auto session = packageSession(
+      "fn entry() -> i32 { let f = (a: i32, b: i32) -> i32 => a; "
+      "let g = f; return g(40, 2); }\n"_zc);
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(session->checkSources());
+  ZC_EXPECT(!session->hasDiagnosticErrors());
+  ZC_EXPECT(session->getIncidents().empty());
+  ZC_REQUIRE(session->getVerifiedHirModules().size() == 1);
+  const auto& hir = session->getVerifiedHirModules()[0];
+  ZC_EXPECT(hir.functions().size() == 2);
+  ZC_EXPECT(hir.closureAddresses().size() == 1);
+  ZC_EXPECT(hir.indirectCalls().size() == 1);
+  ZC_EXPECT(hir.calls().size() == 0);
+  ZC_EXPECT(hir.indirectCalls()[0].arguments.size() == 2);
+  ZC_EXPECT(hir.indirectCalls()[0].callee == hir.closureAddresses()[0].closure);
+  size_t closureParameterTotal = 0;
+  for (const auto& function : hir.functions()) {
+    closureParameterTotal += function.parameters.size();
+  }
+  ZC_EXPECT(closureParameterTotal == 2);
+  ZC_REQUIRE(session->getOwnershipCheckedMirModules().size() == 1);
+  ZC_EXPECT(session->getOwnershipCheckedMirModules()[0].builtMir().functions().size() == 2);
 }
 
 ZC_TEST("CompilerSessionTest.CopiedClosureValueCallLowersToHirAndMir") {

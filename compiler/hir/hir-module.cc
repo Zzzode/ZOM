@@ -1224,20 +1224,21 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       }
       const auto& earlyCallable =
           closureSignatureEarly->payload.variant().get<checker::signature::CallableSignature>();
-      // RFC 0057 slice 1b: a non-capturing block-body `fn` closure with one or
-      // two published ordinary integer parameters is structurally the
-      // parameter-reference-return shape (one parameter reference value); the
-      // difference from a one-capture closure is parameter provenance, checked
-      // against the published signature instead of capture facts. The
-      // parameter count ceiling matches the scalar call ladder width
+      // RFC 0057 slice 1b: a non-capturing closure with one or two published
+      // ordinary integer parameters is structurally the
+      // parameter-reference-return shape (one parameter reference value), for
+      // both the block-body `fn` spelling and the expression-body paren-arrow
+      // lambda; the difference from a one-capture closure is parameter
+      // provenance, checked against the published signature instead of capture
+      // facts. The parameter count ceiling matches the scalar call ladder width
       // (lir::kMaxCallArguments).
       constexpr size_t kMaxScalarClosureParameters = 2;
       const size_t closureParameterCount = earlyCallable.parameters.size();
-      const bool parameterClosure =
-          !closureCaptures && closureIsFunctionExpression && closureParameterCount >= 1 &&
-          closureParameterCount <= kMaxScalarClosureParameters &&
-          earlyCallable.receiver == zc::none && earlyCallable.raises == zc::none &&
-          earlyCallable.abi == zc::none;
+      const bool parameterClosure = !closureCaptures && closureParameterCount >= 1 &&
+                                    closureParameterCount <= kMaxScalarClosureParameters &&
+                                    earlyCallable.receiver == zc::none &&
+                                    earlyCallable.raises == zc::none &&
+                                    earlyCallable.abi == zc::none;
       if (!closureCaptures && closureParameterCount != 0 && !parameterClosure) {
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                             ir::IrFailureKind::InvalidFact, module, registries,
@@ -1407,6 +1408,40 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       identity::SourceSpan expectedBlockSpan = closureDefinition.source.clone();
       identity::SourceSpan expectedReturnSpan = closureDefinition.source.clone();
       identity::SourceSpan expectedValueSpan = closureDefinition.source.clone();
+      // Reconciles a parameter-reference body value with the closure's
+      // declared parameters: the value identifier must materialize to the
+      // owner-local CallableParameter binding at one parameter's declaration
+      // node. Returns the matched ordinary position through matchedIndex.
+      auto namesOneDeclaredParameter = [&](ast::NodeId valueNode, uint32_t parameterListWord,
+                                           size_t& matchedIndex) -> bool {
+        const ast::NodeId parameterListNode(
+            closureTree.node(closureDefinition.node).payload.words[parameterListWord]);
+        if (!closureTree.contains(parameterListNode)) { return false; }
+        const ast::NodeList parameterNodes{
+            closureTree.node(parameterListNode)
+                .payload.words[ast::kFunctionParameterListParamsFirstWord],
+            closureTree.node(parameterListNode)
+                .payload.words[ast::kFunctionParameterListParamsSizeWord]};
+        if (parameterNodes.size != closureParameterCount) { return false; }
+        bool namesParameter = false;
+        ZC_IF_SOME(parameterBinding, resolvedOwnerLocal(bound.bindings(), valueNode)) {
+          for (size_t parameterPosition = 0; parameterPosition < closureParameterCount;
+               ++parameterPosition) {
+            const ast::NodeId parameterNode = closureTree.list(parameterNodes)[parameterPosition];
+            for (const auto& local : definitions.ownerLocalBindings()) {
+              if (local.binding != parameterBinding) { continue; }
+              if (local.node == parameterNode &&
+                  local.site.value().is<binder::DeclarationDefinitionSite>()) {
+                namesParameter = true;
+                matchedIndex = parameterPosition;
+              }
+              break;
+            }
+            if (namesParameter) { break; }
+          }
+        }
+        return namesParameter;
+      };
       if (closureIsFunctionExpression) {
         auto closureShapeMaybe =
             functionReturnShape(closureTree, closureTree.node(closureDefinition.node));
@@ -1505,41 +1540,9 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           // The return identifier must materialize to the owner-local
           // CallableParameter binding at one of the closure's declared
           // parameter nodes.
-          const ast::NodeId parameterListNode(
-              closureTree.node(closureDefinition.node)
-                  .payload.words[ast::kFunctionExpressionParamsIdWord]);
-          if (!closureTree.contains(parameterListNode)) {
+          if (!namesOneDeclaredParameter(closureSource.value, ast::kFunctionExpressionParamsIdWord,
+                                         returnedClosureParameterIndex)) {
             closureSourceValueValid = false;
-          } else {
-            const ast::NodeList parameterNodes{
-                closureTree.node(parameterListNode)
-                    .payload.words[ast::kFunctionParameterListParamsFirstWord],
-                closureTree.node(parameterListNode)
-                    .payload.words[ast::kFunctionParameterListParamsSizeWord]};
-            if (parameterNodes.size != closureParameterCount) {
-              closureSourceValueValid = false;
-            } else {
-              bool namesParameter = false;
-              ZC_IF_SOME(parameterBinding,
-                         resolvedOwnerLocal(bound.bindings(), closureSource.value)) {
-                for (size_t parameterPosition = 0; parameterPosition < closureParameterCount;
-                     ++parameterPosition) {
-                  const ast::NodeId parameterNode =
-                      closureTree.list(parameterNodes)[parameterPosition];
-                  for (const auto& local : definitions.ownerLocalBindings()) {
-                    if (local.binding != parameterBinding) { continue; }
-                    if (local.node == parameterNode &&
-                        local.site.value().is<binder::DeclarationDefinitionSite>()) {
-                      namesParameter = true;
-                      returnedClosureParameterIndex = parameterPosition;
-                    }
-                    break;
-                  }
-                  if (namesParameter) { break; }
-                }
-              }
-              if (!namesParameter) { closureSourceValueValid = false; }
-            }
           }
         }
         if (!closureSourceValueValid) {
@@ -1568,8 +1571,18 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             closureTree.node(closureDefinition.node).payload.words[ast::kLambdaExpressionBodyWord]);
         const ast::NodeId lambdaBody(closureTree.node(closureDefinition.node)
                                          .payload.words[ast::kLambdaExpressionExprBodyWord]);
-        if (closureTree.contains(lambdaBlock) || !closureTree.contains(lambdaBody) ||
-            !isScalarLiteral(closureTree.node(lambdaBody).kind)) {
+        const bool lambdaBodyShapeValid =
+            closureTree.contains(lambdaBody) && (!closureTree.contains(lambdaBlock)) &&
+            (parameterClosure ? closureTree.node(lambdaBody).kind == ast::SyntaxKind::IdentExpr
+                              : isScalarLiteral(closureTree.node(lambdaBody).kind));
+        if (!lambdaBodyShapeValid) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        if (parameterClosure &&
+            !namesOneDeclaredParameter(lambdaBody, ast::kLambdaExpressionParamsIdWord,
+                                       returnedClosureParameterIndex)) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                               ir::IrFailureKind::InvalidFact, module, registries,
                                               index + 1);
