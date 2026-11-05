@@ -553,6 +553,10 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/copied-closure-value-consumer/Zom.toml::copied_closure_value_consumer::copied_closure_value_consumer::42"
       --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/two-parameter-closure-consumer/Zom.toml::two_parameter_closure_consumer::two_parameter_closure_consumer::40"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/two-parameter-copied-closure-value-consumer/Zom.toml::two_parameter_copied_closure_value_consumer::two_parameter_copied_closure_value_consumer::40"
+      --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/call-consumer/Zom.toml::call_consumer::call_consumer::42"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/callarg-consumer/Zom.toml::callarg_consumer::callarg_consumer::7"

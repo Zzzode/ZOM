@@ -860,11 +860,47 @@ ZC_TEST("CompilerSessionTest.SingleParameterNonCapturingClosureLowersToHirAndMir
   ZC_EXPECT(session->getOwnershipCheckedMirModules()[0].builtMir().functions().size() == 2);
 }
 
-ZC_TEST("CompilerSessionTest.MultiParameterNonCapturingClosureKeepsCapabilityDrain") {
-  // RFC 0057 slice 1b boundary: the slice-1b call ladder admits one ordinary
-  // parameter. A two-parameter closure type-checks (zero ZOM4009) but keeps
-  // the HIR capability drain, with zero published HIR modules and zero
-  // incidents.
+ZC_TEST("CompilerSessionTest.TwoParameterNonCapturingClosureLowersToHirAndMir") {
+  // RFC 0057 slice 1b: a non-capturing block-body function-expression closure
+  // with two ordinary integer value parameters lowers end to end. The closure
+  // is a two-parameter function whose sole statement returns its first
+  // parameter; the caller's direct call carries the two literal arguments.
+  auto session = packageSession(
+      "fn entry() -> i32 { let f = fn(a: i32, b: i32) -> i32 { return a; }; "
+      "return f(40, 2); }\n"_zc);
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(session->checkSources());
+  ZC_EXPECT(!session->hasDiagnosticErrors());
+  ZC_EXPECT(session->getIncidents().empty());
+  ZC_REQUIRE(session->getVerifiedHirModules().size() == 1);
+  const auto& hir = session->getVerifiedHirModules()[0];
+  // The entry and the closure.
+  ZC_EXPECT(hir.functions().size() == 2);
+  // Exactly one HIR function carries a parameter: the closure, with two.
+  size_t parameterBearingFunctions = 0;
+  size_t closureParameterTotal = 0;
+  for (const auto& function : hir.functions()) {
+    if (function.parameters.size() == 0) { continue; }
+    ++parameterBearingFunctions;
+    closureParameterTotal += function.parameters.size();
+  }
+  ZC_EXPECT(parameterBearingFunctions == 1);
+  ZC_EXPECT(closureParameterTotal == 2);
+  // The single call carries the two explicit literal arguments.
+  ZC_EXPECT(hir.calls().size() == 1);
+  ZC_EXPECT(hir.calls()[0].arguments.size() == 2);
+  ZC_REQUIRE(session->getOwnershipCheckedMirModules().size() == 1);
+  ZC_EXPECT(session->getOwnershipCheckedMirModules()[0].builtMir().functions().size() == 2);
+}
+
+ZC_TEST("CompilerSessionTest.OverTwoParameterClosureKeepsCapabilityDrain") {
+  // RFC 0057 slice 1b boundary: the scalar call ladder admits at most two
+  // ordinary closure parameters. A three-parameter closure type-checks (zero
+  // ZOM4009) but keeps the HIR capability drain, with zero published HIR
+  // modules and zero incidents. The expression-body paren-arrow lambda with a
+  // parameter is likewise outside the admitted block-body slice.
   const auto drains = [](zc::StringPtr source) {
     auto session = packageSession(source);
     ZC_REQUIRE(session->parseSources());
@@ -877,10 +913,8 @@ ZC_TEST("CompilerSessionTest.MultiParameterNonCapturingClosureKeepsCapabilityDra
     ZC_EXPECT(session->getIncidents().empty());
   };
   drains(
-      "fn entry() -> i32 { let f = fn(a: i32, b: i32) -> i32 { return a; }; "
-      "return f(40, 2); }\n"_zc);
-  // The expression-body paren-arrow lambda with a parameter is likewise
-  // outside the admitted block-body slice.
+      "fn entry() -> i32 { let f = fn(a: i32, b: i32, c: i32) -> i32 { return a; }; "
+      "return f(1, 2, 3); }\n"_zc);
   drains(
       "fn entry() -> i32 { let f = (n: i32) -> i32 => n; "
       "return f(42); }\n"_zc);
@@ -924,6 +958,43 @@ ZC_TEST("CompilerSessionTest.CopiedClosureValueCallLowersToHirAndMir") {
   }
   ZC_EXPECT(parameterBearingFunctions == 1);
   ZC_EXPECT(closureParameterTotal == 1);
+  ZC_REQUIRE(session->getOwnershipCheckedMirModules().size() == 1);
+  ZC_EXPECT(session->getOwnershipCheckedMirModules()[0].builtMir().functions().size() == 2);
+}
+
+ZC_TEST("CompilerSessionTest.TwoParameterCopiedClosureValueCallLowersToHirAndMir") {
+  // RFC 0057 slice 1b value carrier: a two-argument closure value reached
+  // through a whole-local copy chain (`let g = f; g(40, 2)`) lowers through
+  // the HIR closure-address/indirect-call value path and the MIR
+  // code-pointer carrier. The body publishes HIR and MIR with zero
+  // diagnostics and zero incidents.
+  auto session = packageSession(
+      "fn entry() -> i32 { let f = fn(a: i32, b: i32) -> i32 { return a; }; "
+      "let g = f; return g(40, 2); }\n"_zc);
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(session->checkSources());
+  ZC_EXPECT(!session->hasDiagnosticErrors());
+  ZC_EXPECT(session->getIncidents().empty());
+  ZC_REQUIRE(session->getVerifiedHirModules().size() == 1);
+  const auto& hir = session->getVerifiedHirModules()[0];
+  ZC_EXPECT(hir.functions().size() == 2);
+  ZC_EXPECT(hir.closureAddresses().size() == 1);
+  ZC_EXPECT(hir.indirectCalls().size() == 1);
+  ZC_EXPECT(hir.calls().size() == 0);
+  const auto& indirectCall = hir.indirectCalls()[0];
+  ZC_EXPECT(indirectCall.arguments.size() == 2);
+  ZC_EXPECT(indirectCall.callee == hir.closureAddresses()[0].closure);
+  size_t parameterBearingFunctions = 0;
+  size_t closureParameterTotal = 0;
+  for (const auto& function : hir.functions()) {
+    if (function.parameters.size() == 0) { continue; }
+    ++parameterBearingFunctions;
+    closureParameterTotal += function.parameters.size();
+  }
+  ZC_EXPECT(parameterBearingFunctions == 1);
+  ZC_EXPECT(closureParameterTotal == 2);
   ZC_REQUIRE(session->getOwnershipCheckedMirModules().size() == 1);
   ZC_EXPECT(session->getOwnershipCheckedMirModules()[0].builtMir().functions().size() == 2);
 }

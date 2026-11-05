@@ -1200,11 +1200,6 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                               index + 1);
         }
       }
-      // RFC 0057 slice 1b: a non-capturing block-body `fn` closure with one
-      // published ordinary integer parameter is structurally identical to the
-      // one-capture closure on the HIR side (one parameter, one parameter
-      // reference return); the difference is parameter provenance, checked
-      // against the published signature instead of capture facts.
       const checker::signature::SemanticSignature* closureSignatureEarly = nullptr;
       for (const auto& candidateSignature : signatures.definitions) {
         if (candidateSignature.definition == function.definition) {
@@ -1229,11 +1224,21 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       }
       const auto& earlyCallable =
           closureSignatureEarly->payload.variant().get<checker::signature::CallableSignature>();
+      // RFC 0057 slice 1b: a non-capturing block-body `fn` closure with one or
+      // two published ordinary integer parameters is structurally the
+      // parameter-reference-return shape (one parameter reference value); the
+      // difference from a one-capture closure is parameter provenance, checked
+      // against the published signature instead of capture facts. The
+      // parameter count ceiling matches the scalar call ladder width
+      // (lir::kMaxCallArguments).
+      constexpr size_t kMaxScalarClosureParameters = 2;
+      const size_t closureParameterCount = earlyCallable.parameters.size();
       const bool parameterClosure =
-          !closureCaptures && closureIsFunctionExpression && earlyCallable.parameters.size() == 1 &&
+          !closureCaptures && closureIsFunctionExpression && closureParameterCount >= 1 &&
+          closureParameterCount <= kMaxScalarClosureParameters &&
           earlyCallable.receiver == zc::none && earlyCallable.raises == zc::none &&
           earlyCallable.abi == zc::none;
-      if (!closureCaptures && earlyCallable.parameters.size() != 0 && !parameterClosure) {
+      if (!closureCaptures && closureParameterCount != 0 && !parameterClosure) {
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                             ir::IrFailureKind::InvalidFact, module, registries,
                                             index + 1);
@@ -1252,7 +1257,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       // (value F+3) and at F+5 for the two-leaf binary shape (left F+2, right
       // F+3, binary F+4).
       const HirNodeId closureReturnId = hirId(expectedFunction + (binaryClosure ? 5 : 2));
-      const size_t expectedParameterCount = parameterClosure ? 1 : orderedCaptureFacts.size();
+      const size_t expectedParameterCount =
+          parameterClosure ? closureParameterCount : orderedCaptureFacts.size();
       if (function.node != hirId(expectedFunction) || block.node != hirId(expectedFunction + 1) ||
           function.body != block.node || block.statements.size() != 1 ||
           block.statements[0] != closureReturnId || function.receiver != zc::none ||
@@ -1262,15 +1268,18 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                             index + 1);
       }
       if (parameterClosure) {
-        // The one parameter must match the published signature parameter: its
-        // content-addressed key at ordinary position zero and the published
-        // integer scalar type.
-        const auto& publishedParameter = earlyCallable.parameters[0];
-        if (function.parameters[0].key != publishedParameter.parameter ||
-            function.parameters[0].type != publishedParameter.type) {
-          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
-                                              ir::IrFailureKind::InvalidFact, module, registries,
-                                              index + 1);
+        // Every declared parameter must match the published signature
+        // parameter at its ordinary position: the content-addressed key and
+        // the published integer scalar type.
+        for (size_t parameterPosition = 0; parameterPosition < closureParameterCount;
+             ++parameterPosition) {
+          const auto& publishedParameter = earlyCallable.parameters[parameterPosition];
+          if (function.parameters[parameterPosition].key != publishedParameter.parameter ||
+              function.parameters[parameterPosition].type != publishedParameter.type) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
         }
       }
       for (size_t position = 0; position < orderedCaptureFacts.size(); ++position) {
@@ -1394,6 +1403,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       // block/return spans reuse the closure source span; the function
       // expression anchors its real block and return.
       ast::NodeId closureValue;
+      size_t returnedClosureParameterIndex = 0;
       identity::SourceSpan expectedBlockSpan = closureDefinition.source.clone();
       identity::SourceSpan expectedReturnSpan = closureDefinition.source.clone();
       identity::SourceSpan expectedValueSpan = closureDefinition.source.clone();
@@ -1493,7 +1503,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         }
         if (closureSourceValueValid && parameterClosure) {
           // The return identifier must materialize to the owner-local
-          // CallableParameter binding at the closure's sole parameter node.
+          // CallableParameter binding at one of the closure's declared
+          // parameter nodes.
           const ast::NodeId parameterListNode(
               closureTree.node(closureDefinition.node)
                   .payload.words[ast::kFunctionExpressionParamsIdWord]);
@@ -1505,18 +1516,26 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                     .payload.words[ast::kFunctionParameterListParamsFirstWord],
                 closureTree.node(parameterListNode)
                     .payload.words[ast::kFunctionParameterListParamsSizeWord]};
-            if (parameterNodes.size != 1) {
+            if (parameterNodes.size != closureParameterCount) {
               closureSourceValueValid = false;
             } else {
-              const ast::NodeId parameterNode = closureTree.list(parameterNodes)[0];
               bool namesParameter = false;
               ZC_IF_SOME(parameterBinding,
                          resolvedOwnerLocal(bound.bindings(), closureSource.value)) {
-                for (const auto& local : definitions.ownerLocalBindings()) {
-                  if (local.binding != parameterBinding) { continue; }
-                  namesParameter = local.node == parameterNode &&
-                                   local.site.value().is<binder::DeclarationDefinitionSite>();
-                  break;
+                for (size_t parameterPosition = 0; parameterPosition < closureParameterCount;
+                     ++parameterPosition) {
+                  const ast::NodeId parameterNode =
+                      closureTree.list(parameterNodes)[parameterPosition];
+                  for (const auto& local : definitions.ownerLocalBindings()) {
+                    if (local.binding != parameterBinding) { continue; }
+                    if (local.node == parameterNode &&
+                        local.site.value().is<binder::DeclarationDefinitionSite>()) {
+                      namesParameter = true;
+                      returnedClosureParameterIndex = parameterPosition;
+                    }
+                    break;
+                  }
+                  if (namesParameter) { break; }
                 }
               }
               if (!namesParameter) { closureSourceValueValid = false; }
@@ -1570,13 +1589,16 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         // capturing closure, or the published signature key for the slice-1b
         // parameterized closure.
         identity::CallableParameterKey expectedKey = [&]() {
-          if (parameterClosure) { return earlyCallable.parameters[0].parameter.clone(); }
+          if (parameterClosure) {
+            return earlyCallable.parameters[returnedClosureParameterIndex].parameter.clone();
+          }
           auto environmentRecord = identity::CallableParameterIdentityRecord::from(
               closureDefinition.key.clone(), identity::CallableParameterPosition::ordinary(0));
           return identity::CallableParameterKey::compute(environmentRecord);
         }();
-        const auto expectedParameterType = parameterClosure ? earlyCallable.parameters[0].type
-                                                            : orderedCaptureFacts[0]->capturedType;
+        const auto expectedParameterType =
+            parameterClosure ? earlyCallable.parameters[returnedClosureParameterIndex].type
+                             : orderedCaptureFacts[0]->capturedType;
         if (!sameSpan(block.sourceSpan, expectedBlockSpan) ||
             !sameSpan(returnRecord.sourceSpan, expectedReturnSpan) ||
             !sameSpan(paramRecord.sourceSpan, expectedValueSpan) ||
@@ -1733,14 +1755,17 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       }
       const auto& closureCallable =
           closureSignature->payload.variant().get<checker::signature::CallableSignature>();
-      // RFC 0057 slice 1b allows exactly one published ordinary parameter;
+      // RFC 0057 slice 1b allows one or two published ordinary parameters;
       // every other non-capturing closure and all capturing closures stay
       // parameterless on this edge.
+      const size_t closurePublishedParameterCount = closureCallable.parameters.size();
       const bool expectedParameterClosure =
-          closureCallable.parameters.size() == 1 && closureCallable.receiver == zc::none &&
-          closureCallable.raises == zc::none && closureCallable.abi == zc::none;
+          closurePublishedParameterCount >= 1 &&
+          closurePublishedParameterCount <= kMaxScalarClosureParameters &&
+          closureCallable.receiver == zc::none && closureCallable.raises == zc::none &&
+          closureCallable.abi == zc::none;
       if (closureCallable.success != function.resultType ||
-          (expectedParameterClosure ? !parameterClosure : closureCallable.parameters.size() != 0) ||
+          (expectedParameterClosure ? !parameterClosure : closurePublishedParameterCount != 0) ||
           (!expectedParameterClosure && parameterClosure) || closureCallable.receiver != zc::none ||
           closureCallable.raises != zc::none || closureCallable.abi != zc::none ||
           function.linkage != HirLinkage::Internal ||
@@ -14147,6 +14172,9 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       const size_t copyCount = source.closureValueCopies.size();
       const size_t slotCount = copyCount + 1;
       const size_t valueCallStride = 5 + 2 * slotCount;
+      // Matches the HIR builder admission and the scalar call ladder width
+      // (lir::kMaxCallArguments).
+      constexpr size_t kMaxClosureValueCallArguments = 2;
       const HirNodeId valueCallReturnId = hirId(expectedFunction + 2 + 2 * slotCount);
       const HirNodeId valueCallFunctionRefId = hirId(expectedFunction + 3 + 2 * slotCount);
       const HirNodeId valueCallCallId = hirId(expectedFunction + 4 + 2 * slotCount);
@@ -14293,15 +14321,16 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           returnStatementRecord.value != call.node ||
           returnStatementRecord.resultType != function.resultType || call.node != valueCallCallId ||
           call.function != pointerReference.node || call.resultType != function.resultType ||
-          call.arguments.size() != 1) {
+          call.arguments.size() < 1 || call.arguments.size() > kMaxClosureValueCallArguments) {
         return rejectValueCall();
       }
-      // The single argument is a scalar constant.
-      const auto& callArgument = call.arguments[0];
-      if (callArgument.value == zc::none || callArgument.parameter != zc::none ||
-          callArgument.local != zc::none || callArgument.field != zc::none ||
-          callArgument.comparisonOperation != zc::none) {
-        return rejectValueCall();
+      // Every argument is a scalar constant.
+      for (const auto& callArgument : call.arguments) {
+        if (callArgument.value == zc::none || callArgument.parameter != zc::none ||
+            callArgument.local != zc::none || callArgument.field != zc::none ||
+            callArgument.comparisonOperation != zc::none) {
+          return rejectValueCall();
+        }
       }
 
       // Signature and definition reconciliation for the entry function.
@@ -14412,7 +14441,9 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       if (!sourceTree.contains(sourceCalleeNode) ||
           sourceTree.node(sourceCalleeNode).kind != ast::SyntaxKind::IdentExpr ||
           !sourceTree.contains(sourceTypeArguments) || !sourceTypeArguments.empty() ||
-          !sourceTree.contains(sourceArguments) || sourceArguments.size != 1) {
+          !sourceTree.contains(sourceArguments) || sourceArguments.size < 1 ||
+          sourceArguments.size > kMaxClosureValueCallArguments ||
+          sourceArguments.size != call.arguments.size()) {
         return rejectValueCall();
       }
       {
@@ -14422,29 +14453,41 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           return rejectValueCall();
         }
       }
-      const ast::NodeId sourceArgumentNode = sourceTree.list(sourceArguments)[0];
+      zc::Vector<ast::NodeId> sourceArgumentNodes;
+      for (size_t argumentIndex = 0; argumentIndex < sourceArguments.size; ++argumentIndex) {
+        sourceArgumentNodes.add(sourceTree.list(sourceArguments)[argumentIndex]);
+      }
       // Checker call and dispatch facts target the closure directly.
       auto checkedCallIndex = factIndex(facts.calls(), sourceCallNode);
       auto callKey = checkedNodeKey(sourceTree, bound.parsedModule(), sourceCallNode);
-      auto argumentKey = checkedNodeKey(sourceTree, bound.parsedModule(), sourceArgumentNode);
       auto calleeTypeIndex = factIndex(facts.nodeTypes(), sourceCalleeNode);
-      auto argumentTypeIndex = factIndex(facts.nodeTypes(), sourceArgumentNode);
-      auto literalFactIndex = factIndex(facts.literals(), sourceArgumentNode);
       auto closureTypeIndex = factIndex(facts.nodeTypes(), source.closureAliasInitializer);
-      if (checkedCallIndex == zc::none || callKey == zc::none || argumentKey == zc::none ||
-          calleeTypeIndex == zc::none || argumentTypeIndex == zc::none ||
-          literalFactIndex == zc::none || closureTypeIndex == zc::none) {
+      zc::Vector<size_t> sourceLiteralSlots;
+      zc::Vector<identity::SemanticTypeId> sourceArgumentTypes;
+      for (const auto sourceArgumentNode : sourceArgumentNodes) {
+        auto argumentTypeIndex = factIndex(facts.nodeTypes(), sourceArgumentNode);
+        auto literalFactIndex = factIndex(facts.literals(), sourceArgumentNode);
+        auto argumentKey = checkedNodeKey(sourceTree, bound.parsedModule(), sourceArgumentNode);
+        if (argumentTypeIndex == zc::none || literalFactIndex == zc::none ||
+            argumentKey == zc::none) {
+          return rejectValueCallMissing();
+        }
+        size_t argumentTypeSlot = 0;
+        size_t literalSlot = 0;
+        ZC_IF_SOME(value, argumentTypeIndex) { argumentTypeSlot = value; }
+        ZC_IF_SOME(value, literalFactIndex) { literalSlot = value; }
+        sourceLiteralSlots.add(literalSlot);
+        sourceArgumentTypes.add(facts.nodeTypes().entries()[argumentTypeSlot].value);
+      }
+      if (checkedCallIndex == zc::none || callKey == zc::none || calleeTypeIndex == zc::none ||
+          closureTypeIndex == zc::none) {
         return rejectValueCallMissing();
       }
       size_t checkedCallSlot = 0;
       size_t calleeTypeSlot = 0;
-      size_t argumentTypeSlot = 0;
-      size_t literalSlot = 0;
       size_t closureTypeSlot = 0;
       ZC_IF_SOME(value, checkedCallIndex) { checkedCallSlot = value; }
       ZC_IF_SOME(value, calleeTypeIndex) { calleeTypeSlot = value; }
-      ZC_IF_SOME(value, argumentTypeIndex) { argumentTypeSlot = value; }
-      ZC_IF_SOME(value, literalFactIndex) { literalSlot = value; }
       ZC_IF_SOME(value, closureTypeIndex) { closureTypeSlot = value; }
       const auto& invocation = facts.calls().entries()[checkedCallSlot].value.invocation;
       const auto& selected = invocation.selected.variant();
@@ -14456,11 +14499,6 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       const auto& dispatch = candidate.impl->checkedModule.dispatchFacts().facts()[dispatchSlot];
       const auto& target = dispatch.fact.target.variant();
       const auto& transform = dispatch.fact.resultTransform.variant();
-      const auto& checkedArgument = invocation.arguments[0];
-      const auto& dispatchArgument = dispatch.fact.arguments[0];
-      const auto& checkedLiteral = facts.literals().entries()[literalSlot].value;
-      const identity::SemanticTypeId sourceArgumentType =
-          facts.nodeTypes().entries()[argumentTypeSlot].value;
       const auto closureDefId = ZC_ASSERT_NONNULL(sourceClosureDefId);
       if (!selected.is<checker::checked::DirectCallable>() ||
           selected.get<checker::checked::DirectCallable>().callee != closureDefId ||
@@ -14473,25 +14511,39 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           invocation.successType != function.resultType ||
           invocation.resultType != function.resultType || invocation.receiver != zc::none ||
           invocation.receiverMode != zc::none || invocation.receiverAdjustment != zc::none ||
-          invocation.arguments.size() != 1 || invocation.substitutions != zc::none ||
-          invocation.witnesses != zc::none || invocation.raises != zc::none ||
-          dispatch.fact.receiver != zc::none || dispatch.fact.arguments.size() != 1 ||
+          invocation.arguments.size() != sourceArgumentNodes.size() ||
+          invocation.substitutions != zc::none || invocation.witnesses != zc::none ||
+          invocation.raises != zc::none || dispatch.fact.receiver != zc::none ||
+          dispatch.fact.arguments.size() != sourceArgumentNodes.size() ||
           dispatch.fact.successType != function.resultType ||
           dispatch.fact.resultType != function.resultType ||
           dispatch.fact.substitutions != zc::none || dispatch.fact.witnesses != zc::none ||
-          dispatch.fact.raises != zc::none || checkedArgument.sourceNode != sourceArgumentNode ||
-          checkedArgument.sourceType != sourceArgumentType ||
-          checkedArgument.parameterType != sourceArgumentType ||
-          checkedArgument.adjustment != zc::none ||
-          !sameNodeKey(dispatchArgument.sourceNode, ZC_ASSERT_NONNULL(argumentKey)) ||
-          dispatchArgument.sourceType != sourceArgumentType ||
-          dispatchArgument.parameterType != sourceArgumentType ||
-          dispatchArgument.adjustment != zc::none || checkedLiteral.node != sourceArgumentNode ||
-          checkedLiteral.type != sourceArgumentType || checkedLiteral.type != callArgument.type ||
-          !sameConstant(ZC_ASSERT_NONNULL(callArgument.value), checkedLiteral.literal, module,
-                        registries, semanticTypes) ||
-          callArgument.type != sourceArgumentType) {
+          dispatch.fact.raises != zc::none) {
         return rejectValueCall();
+      }
+      for (size_t argumentIndex = 0; argumentIndex < sourceArgumentNodes.size(); ++argumentIndex) {
+        const ast::NodeId sourceArgumentNode = sourceArgumentNodes[argumentIndex];
+        const auto sourceArgumentType = sourceArgumentTypes[argumentIndex];
+        const auto& checkedArgument = invocation.arguments[argumentIndex];
+        const auto& dispatchArgument = dispatch.fact.arguments[argumentIndex];
+        const auto& checkedLiteral =
+            facts.literals().entries()[sourceLiteralSlots[argumentIndex]].value;
+        const auto& callArgument = call.arguments[argumentIndex];
+        auto argumentKey = checkedNodeKey(sourceTree, bound.parsedModule(), sourceArgumentNode);
+        if (checkedArgument.sourceNode != sourceArgumentNode ||
+            checkedArgument.sourceType != sourceArgumentType ||
+            checkedArgument.parameterType != sourceArgumentType ||
+            checkedArgument.adjustment != zc::none ||
+            !sameNodeKey(dispatchArgument.sourceNode, ZC_ASSERT_NONNULL(argumentKey)) ||
+            dispatchArgument.sourceType != sourceArgumentType ||
+            dispatchArgument.parameterType != sourceArgumentType ||
+            dispatchArgument.adjustment != zc::none || checkedLiteral.node != sourceArgumentNode ||
+            checkedLiteral.type != sourceArgumentType || checkedLiteral.type != callArgument.type ||
+            !sameConstant(ZC_ASSERT_NONNULL(callArgument.value), checkedLiteral.literal, module,
+                          registries, semanticTypes) ||
+            callArgument.type != sourceArgumentType) {
+          return rejectValueCall();
+        }
       }
       // Every chain identifier (origin closure expression, copy initializers,
       // and the call callee) carries the structural function type.
@@ -14526,10 +14578,16 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       if (!sameSpan(address.sourceSpan, ZC_ASSERT_NONNULL(closureSpan)) ||
           !sameSpan(call.sourceSpan, ZC_ASSERT_NONNULL(callSpan)) ||
           !sameSpan(pointerReference.sourceSpan, ZC_ASSERT_NONNULL(calleeSpan)) ||
-          !sameSpan(returnStatementRecord.sourceSpan, ZC_ASSERT_NONNULL(returnSpan)) ||
-          !sameSpan(callArgument.sourceSpan, ZC_ASSERT_NONNULL(bound.parsedModule().spanFor(
-                                                 sourceTree.node(sourceArgumentNode).range)))) {
+          !sameSpan(returnStatementRecord.sourceSpan, ZC_ASSERT_NONNULL(returnSpan))) {
         return rejectValueCall();
+      }
+      for (size_t argumentIndex = 0; argumentIndex < sourceArgumentNodes.size(); ++argumentIndex) {
+        auto argumentSpan =
+            bound.parsedModule().spanFor(sourceTree.node(sourceArgumentNodes[argumentIndex]).range);
+        if (argumentSpan == zc::none ||
+            !sameSpan(call.arguments[argumentIndex].sourceSpan, ZC_ASSERT_NONNULL(argumentSpan))) {
+          return rejectValueCall();
+        }
       }
       for (size_t copy = 0; copy < copyCount; ++copy) {
         const auto& copyShape = source.closureValueCopies[copy];
