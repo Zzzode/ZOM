@@ -1072,6 +1072,69 @@ ZC_TEST("CompilerSessionTest.TwoParameterCopiedClosureValueCallLowersToHirAndMir
   ZC_EXPECT(session->getOwnershipCheckedMirModules()[0].builtMir().functions().size() == 2);
 }
 
+ZC_TEST("CompilerSessionTest.CapturedCopiedClosureValueCallLowersToHirAndMir") {
+  // RFC 0057 slice 2 captured-value edge (flagged): a one-capture closure
+  // value reached through a whole-local copy chain (`let g = f; g()`) lowers
+  // through the HIR closure-address/indirect-call value path, passing the
+  // captured scalar caller local as the closure's synthetic by-value
+  // environment argument. The body publishes HIR and MIR with zero
+  // diagnostics and zero incidents.
+  auto session = packageSession(
+      "fn entry() -> i32 { let x: i32 = 42; let f = fn() -> i32 { return x; }; "
+      "let g = f; return g(); }\n"_zc,
+      {}, true, /*experimentalCaptures=*/true);
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(session->checkSources());
+  ZC_EXPECT(!session->hasDiagnosticErrors());
+  ZC_EXPECT(session->getIncidents().empty());
+  ZC_REQUIRE(session->getVerifiedHirModules().size() == 1);
+  const auto& hir = session->getVerifiedHirModules()[0];
+  // The entry and the closure.
+  ZC_EXPECT(hir.functions().size() == 2);
+  // The value path pools one closure address and one indirect call.
+  ZC_EXPECT(hir.closureAddresses().size() == 1);
+  ZC_EXPECT(hir.indirectCalls().size() == 1);
+  ZC_EXPECT(hir.calls().size() == 0);
+  // The source call is argument-free; the indirect call carries the one
+  // captured local as its environment argument and targets the closure named
+  // by the closure-address record.
+  const auto& indirectCall = hir.indirectCalls()[0];
+  ZC_EXPECT(indirectCall.arguments.size() == 1);
+  ZC_EXPECT(indirectCall.arguments[0].local != zc::none);
+  ZC_EXPECT(indirectCall.callee == hir.closureAddresses()[0].closure);
+  // The entry owns the captured local and the two pointer-chain slots; the
+  // closure owns the one synthetic environment parameter.
+  ZC_EXPECT(hir.locals().size() == 3);
+  size_t parameterBearingFunctions = 0;
+  size_t closureParameterTotal = 0;
+  for (const auto& function : hir.functions()) {
+    if (function.parameters.size() == 0) { continue; }
+    ++parameterBearingFunctions;
+    closureParameterTotal += function.parameters.size();
+  }
+  ZC_EXPECT(parameterBearingFunctions == 1);
+  ZC_EXPECT(closureParameterTotal == 1);
+  ZC_REQUIRE(session->getOwnershipCheckedMirModules().size() == 1);
+  ZC_EXPECT(session->getOwnershipCheckedMirModules()[0].builtMir().functions().size() == 2);
+}
+
+ZC_TEST("CompilerSessionTest.CapturedCopiedClosureValueCallWithoutFlagKeepsDrain") {
+  // The captured copied-value edge is a flagged experiment: without
+  // --experimental-captures the closure reads an outer local, so the body
+  // checker drains it with the capability diagnostic and no HIR publishes.
+  auto session = packageSession(
+      "fn entry() -> i32 { let x: i32 = 42; let f = fn() -> i32 { return x; }; "
+      "let g = f; return g(); }\n"_zc);
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(!session->checkSources());
+  ZC_EXPECT(session->getVerifiedHirModules().size() == 0);
+  ZC_EXPECT(session->getIncidents().empty());
+}
+
 ZC_TEST("CompilerSessionTest.ReferenceParameterClosureKeepsCheckerCapabilityDrain") {
   // RFC 0057 slice 1b boundary: a reference-typed closure parameter needs the
   // reference-call ABI of a later slice. The closure publishes no signature,

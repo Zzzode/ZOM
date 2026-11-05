@@ -1,0 +1,14 @@
+// RFC 0057 slice 2 captured-value edge: a one-capture closure value reached
+// through a whole-local copy chain. The captured scalar initializes a caller
+// local, the origin local holds the closure address, the copy local holds the
+// same pointer, and the trailing indirect call passes the captured local as
+// the closure's synthetic by-value environment argument. The program exits 42
+// natively through the indirect-call ABI (flagged experiment).
+fn entry() -> i32 {
+  let x: i32 = 42;
+  let f = fn() -> i32 {
+    return x;
+  };
+  let g = f;
+  return g();
+}
