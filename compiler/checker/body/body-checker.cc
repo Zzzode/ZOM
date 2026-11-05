@@ -5386,15 +5386,24 @@ bool isIntegerArithmeticBinarySyntax(const ast::Tree& tree, ast::NodeId binary) 
 
 /// \brief Classifies the flagged RFC 0058 B1/B2 capturing closure.
 ///
-/// Returns the ordered (owner-local declaration preorder) set of one or two
-/// inferred by-value Copy scalar captures for a block-body `fn` expression
-/// with zero user parameters. The sole body statement returns either one
-/// captured identifier (`return a;`) or one integer-arithmetic binary whose
-/// two leaves are captured identifiers (`return a + b;`, `a + a` admitted with
-/// one capture). Every other capture shape (the paren-arrow spelling, three
-/// or more captures, captured parameters, references, moves, mutation,
-/// comparisons, nested/non-identifier operands, explicit `use []`, mismatched
-/// result type) returns none so the caller keeps the ZOM4099 capability drain.
+/// Returns the ordered (owner-local declaration preorder) inferred by-value
+/// Copy scalar captures for a block-body `fn` expression in one of two
+/// admitted shapes:
+///
+/// 1. Zero declared parameters. The sole body statement returns one captured
+///    identifier (`return a;`) or one integer-arithmetic binary whose two
+///    leaves are captured identifiers (`return a + b;`, `a + a` admitted with
+///    one capture).
+/// 2. One declared by-value i32 parameter. The sole body statement returns one
+///    integer-arithmetic binary whose leaves are the closure's own declared
+///    parameter and one captured identifier in either order (`return n + a;`);
+///    exactly one capture is published.
+///
+/// Every other capture shape (two or more declared parameters, a parameter
+/// capture mixed into a zero-parameter closure, the paren-arrow spelling, three
+/// or more captures, captured references, moves, mutation, comparisons,
+/// nested/non-identifier operands, explicit `use []`, mismatched result type)
+/// returns none so the caller keeps the ZOM4099 capability drain.
 zc::Maybe<zc::Vector<AdmittedScalarCapture>> admittedScalarCaptureSet(
     const BodyCheckingInput& input, const binder::AnonymousOwnerLocalKey& closureKey,
     ast::NodeId closureNode) {
@@ -5432,11 +5441,90 @@ zc::Maybe<zc::Vector<AdmittedScalarCapture>> admittedScalarCaptureSet(
   }
   const ast::NodeId valueNode(tree.node(soleStatement).payload.words[ast::kReturnStmtValueWord]);
   if (!tree.contains(valueNode)) { return zc::none; }
-  // Collect the body leaves: one identifier, or two identifiers of an integer
-  // arithmetic binary.
+  // Resolve the closure definition and read its published callable signature
+  // before classifying the body leaves so a leaf naming the closure's own
+  // parameter is distinguishable from a capture.
+  const auto closureDefId = input.boundModule.definitions().closureDefinitionAt(closureNode);
+  if (closureDefId == zc::none) { return zc::none; }
+  bool signatureAdmitted = false;
+  identity::SemanticTypeId resultType{};
+  identity::SemanticTypeId soleParameterType{};
+  size_t signatureParameterCount = 0;
+  for (const auto& semanticSignature : input.signatureFacts.signatures()) {
+    if (semanticSignature.definition != ZC_ASSERT_NONNULL(closureDefId)) { continue; }
+    if (!semanticSignature.payload.variant().is<signature::CallableSignature>()) {
+      return zc::none;
+    }
+    const auto& callable = semanticSignature.payload.variant().get<signature::CallableSignature>();
+    if (callable.genericParameters.size() != 0 || callable.receiver != zc::none ||
+        callable.abi != zc::none || callable.raises != zc::none || callable.parameters.size() > 1) {
+      return zc::none;
+    }
+    if (callable.parameters.size() == 1) {
+      const auto& parameter = callable.parameters[0];
+      if (parameter.mode != signature::ParameterMode::Value) { return zc::none; }
+      soleParameterType = parameter.type;
+    }
+    signatureParameterCount = callable.parameters.size();
+    resultType = callable.success;
+    signatureAdmitted = true;
+    break;
+  }
+  if (!signatureAdmitted) { return zc::none; }
+  auto isI32 = [&](identity::SemanticTypeId type) {
+    auto lookup = input.semanticTypes.get(type);
+    return lookup.is<type::SemanticTypeLookup>() &&
+           lookup.get<type::SemanticTypeLookup>().data().is<type::semantic::PrimitiveTypeData>() &&
+           lookup.get<type::SemanticTypeLookup>()
+                   .data()
+                   .get<type::semantic::PrimitiveTypeData>()
+                   .kind == type::semantic::PrimitiveKind::I32;
+  };
+  if (signatureParameterCount == 1 &&
+      (!isI32(soleParameterType) || soleParameterType != resultType || !isI32(resultType))) {
+    return zc::none;
+  }
+  // A closure parameter has no materialized callable-parameter inventory; the
+  // binder materializes it on the owner-local rail with a
+  // DeclarationDefinitionSite at its FunctionParameterDecl. Build the set of
+  // this closure's own parameter declaration nodes so a body leaf is
+  // distinguishable from an enclosing-function parameter or a capture.
+  zc::Vector<ast::NodeId> closureParameterNodes;
+  if (signatureParameterCount == 1) {
+    const ast::NodeId parameterListId(
+        closureExpr.payload.words[ast::kFunctionExpressionParamsIdWord]);
+    if (!tree.contains(parameterListId) ||
+        tree.node(parameterListId).kind != ast::SyntaxKind::FunctionParameterList) {
+      return zc::none;
+    }
+    const ast::NodeList parameterNodes{
+        tree.node(parameterListId).payload.words[ast::kFunctionParameterListParamsFirstWord],
+        tree.node(parameterListId).payload.words[ast::kFunctionParameterListParamsSizeWord]};
+    if (!tree.contains(parameterNodes) || parameterNodes.size != 1) { return zc::none; }
+    closureParameterNodes.add(tree.list(parameterNodes)[0]);
+  }
+  // True when an identifier leaf resolves to this closure's own declared
+  // parameter (and not to a parameter of an enclosing function).
+  auto namesClosureParameter = [&](ast::NodeId leaf) -> bool {
+    if (signatureParameterCount != 1) { return false; }
+    auto binding = resolvedOwnerLocal(input.boundModule.bindings(), leaf);
+    if (binding == zc::none) { return false; }
+    for (const auto& local : input.boundModule.definitions().ownerLocalBindings()) {
+      if (local.binding != ZC_ASSERT_NONNULL(binding) ||
+          !local.site.value().is<binder::DeclarationDefinitionSite>()) {
+        continue;
+      }
+      const auto parameterNode = local.site.value().get<binder::DeclarationDefinitionSite>().node;
+      return parameterNode == closureParameterNodes[0];
+    }
+    return false;
+  };
+  // Collect the body leaves: one identifier (zero-parameter closures only), or
+  // two identifiers of an integer arithmetic binary.
   zc::Vector<ast::NodeId> leafNodes;
   bool bodyIsBinary = false;
   if (tree.node(valueNode).kind == ast::SyntaxKind::IdentExpr) {
+    if (signatureParameterCount != 0) { return zc::none; }
     leafNodes.add(valueNode);
   } else if (tree.node(valueNode).kind == ast::SyntaxKind::BinaryExpr &&
              isIntegerArithmeticBinarySyntax(tree, valueNode)) {
@@ -5452,10 +5540,17 @@ zc::Maybe<zc::Vector<AdmittedScalarCapture>> admittedScalarCaptureSet(
   } else {
     return zc::none;
   }
-  // Classify each leaf, deduplicating by owner-local binding (`a + a` is one
-  // capture). At most two distinct captures, bounded by the LIR call ladder.
+  // Classify each leaf as either one captured enclosing scalar or, for the
+  // one-parameter mixed form, the closure's own declared parameter. A
+  // one-parameter closure admits exactly one parameter leaf and one capture
+  // leaf (`return n + a;`); a zero-parameter closure admits only captures.
   zc::Vector<AdmittedScalarCapture> captured;
+  size_t parameterLeafCount = 0;
   for (const auto leaf : leafNodes) {
+    if (namesClosureParameter(leaf)) {
+      ++parameterLeafCount;
+      continue;
+    }
     auto one = classifyCapturedScalar(input, leaf);
     if (one == zc::none) { return zc::none; }
     const auto& candidate = ZC_ASSERT_NONNULL(one);
@@ -5468,7 +5563,11 @@ zc::Maybe<zc::Vector<AdmittedScalarCapture>> admittedScalarCaptureSet(
     }
     if (!duplicate) { captured.add(zc::mv(ZC_ASSERT_NONNULL(one))); }
   }
-  if (captured.size() < 1 || captured.size() > 2) { return zc::none; }
+  if (signatureParameterCount == 0) {
+    if (parameterLeafCount != 0 || captured.size() < 1 || captured.size() > 2) { return zc::none; }
+  } else {
+    if (parameterLeafCount != 1 || captured.size() != 1) { return zc::none; }
+  }
   // The capture requirement inventory for this closure must name exactly the
   // classified bindings (one key+target-deduped row per capture).
   size_t requirementCount = 0;
@@ -5490,38 +5589,9 @@ zc::Maybe<zc::Vector<AdmittedScalarCapture>> admittedScalarCaptureSet(
   if (requirementCount != captured.size()) { return zc::none; }
   // Every captured scalar must have the closure's result type. A binary body is
   // integer arithmetic, so bool captures are admitted only for a bare return.
-  const auto closureDefId = input.boundModule.definitions().closureDefinitionAt(closureNode);
-  if (closureDefId == zc::none) { return zc::none; }
-  bool signatureAdmitted = false;
-  identity::SemanticTypeId resultType{};
-  for (const auto& semanticSignature : input.signatureFacts.signatures()) {
-    if (semanticSignature.definition != ZC_ASSERT_NONNULL(closureDefId)) { continue; }
-    if (!semanticSignature.payload.variant().is<signature::CallableSignature>()) {
-      return zc::none;
-    }
-    const auto& callable = semanticSignature.payload.variant().get<signature::CallableSignature>();
-    if (callable.genericParameters.size() != 0 || callable.parameters.size() != 0 ||
-        callable.receiver != zc::none || callable.abi != zc::none || callable.raises != zc::none) {
-      return zc::none;
-    }
-    resultType = callable.success;
-    signatureAdmitted = true;
-    break;
-  }
-  if (!signatureAdmitted) { return zc::none; }
   for (const auto& entry : captured) {
     if (entry.type != resultType) { return zc::none; }
-    if (bodyIsBinary) {
-      auto lookup = input.semanticTypes.get(entry.type);
-      if (!lookup.is<type::SemanticTypeLookup>() ||
-          !lookup.get<type::SemanticTypeLookup>().data().is<type::semantic::PrimitiveTypeData>() ||
-          lookup.get<type::SemanticTypeLookup>()
-                  .data()
-                  .get<type::semantic::PrimitiveTypeData>()
-                  .kind != type::semantic::PrimitiveKind::I32) {
-        return zc::none;
-      }
-    }
+    if (bodyIsBinary && !isI32(entry.type)) { return zc::none; }
   }
   // Canonical field order: owner-local declaration preorder.
   for (size_t i = 1; i < captured.size(); ++i) {
