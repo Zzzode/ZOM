@@ -664,16 +664,19 @@ public:
   /// \brief Lowers a same-module direct call passing two integer-constant
   /// arguments to a two-function LIR module.
   ///
-  /// Admits the caller shape lowered by `lowerCallModuleWithArgument` (two blocks:
-  /// entry Call, continuation Return; one result local) but with a two-argument
-  /// call, and a callee with exactly two parameter locals and a single block that
-  /// returns its first parameter. Both call arguments must be integer constants of
-  /// the matching callee parameter types, and the call must target the identified
-  /// callee. This is the first multi-argument object-emission slice (RFC 0021
-  /// KR5.2 / RFC 0009 widening), capped at two arguments; every other shape and
-  /// argument count returns none.
+  /// Admits the two-argument extension of the `lowerCallModuleWithArgument`
+  /// shapes: the caller is either the trailing-one-local initializer shape
+  /// (one UserLocal destination, empty continuation return) or the
+  /// trailing-two-local Temporary/FunctionResult return shape (entry
+  /// StorageLive(temporary) plus Call, continuation StorageLive(result),
+  /// move temporary into result, StorageDead, return), both with a
+  /// two-argument call, and a callee with exactly two parameter locals and a
+  /// single block that returns its first parameter. Both call arguments must
+  /// be integer constants of the matching callee parameter types, and the call
+  /// must target the identified callee. Capped at two arguments; every other
+  /// shape and argument count returns none.
   ///
-  /// \param caller Verified caller MIR function (two-block Call+Return, two args).
+  /// \param caller Verified caller MIR function (two-block two-arg call shape).
   /// \param callee Verified callee MIR function (two-parameter return shape).
   /// \param semanticTypes Session-owned type store that owns the function types.
   /// \return The lowered two-function LIR module, or none when outside the slice.
