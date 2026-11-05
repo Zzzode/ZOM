@@ -13930,6 +13930,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         bool declaredParameter = false;
       };
       zc::Vector<CapturingLeaf> capturingLeaves;
+      // RFC 0057 slice 2 capture-plus-literal form: a zero-parameter,
+      // one-capture closure whose arithmetic binary combines the captured slot
+      // with one integer literal operand. When set, captureLiteralNode names
+      // the literal operand and the single capturing leaf names the identifier
+      // operand; the closure still carries one environment parameter.
+      bool captureLiteralArithmetic = false;
+      ast::NodeId captureLiteralNode;
       // Source anchors and spans. The lambda spelling has no source block or
       // return: hirBodyAnchor/hirReturnAnchor stay sentinel and their spans
       // reuse the closure source span, while the value anchors the body
@@ -14001,20 +14008,40 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         if (orderedCaptureFacts.size() == 1 && !mixedParameterCapture &&
             closureTree.node(closureShape.value).kind == ast::SyntaxKind::IdentExpr) {
           leafNodes.add(closureShape.value);
-        } else if (expectsBinary &&
+        } else if ((expectsBinary || (orderedCaptureFacts.size() == 1 && !parameterClosure)) &&
                    closureTree.node(closureShape.value).kind == ast::SyntaxKind::BinaryExpr) {
           const ast::NodeId left(
               closureTree.node(closureShape.value).payload.words[ast::kBinaryExprLhsWord]);
           const ast::NodeId right(
               closureTree.node(closureShape.value).payload.words[ast::kBinaryExprRhsWord]);
-          if (!closureTree.contains(left) ||
-              closureTree.node(left).kind != ast::SyntaxKind::IdentExpr ||
-              !closureTree.contains(right) ||
-              closureTree.node(right).kind != ast::SyntaxKind::IdentExpr) {
+          if (!closureTree.contains(left) || !closureTree.contains(right)) {
             return rejectClosureCapability();
           }
-          leafNodes.add(left);
-          leafNodes.add(right);
+          const bool leftIdent = closureTree.node(left).kind == ast::SyntaxKind::IdentExpr;
+          const bool rightIdent = closureTree.node(right).kind == ast::SyntaxKind::IdentExpr;
+          const bool leftIntLiteral = closureTree.node(left).kind == ast::SyntaxKind::IntLiteral;
+          const bool rightIntLiteral = closureTree.node(right).kind == ast::SyntaxKind::IntLiteral;
+          if (leftIdent && rightIdent) {
+            leafNodes.add(left);
+            leafNodes.add(right);
+          } else if (((leftIdent && rightIntLiteral) || (leftIntLiteral && rightIdent)) &&
+                     orderedCaptureFacts.size() == 1 && !parameterClosure &&
+                     !mixedParameterCapture) {
+            // Capture-plus-literal arithmetic: one identifier capture operand
+            // and one integer literal operand. The literal operand is recorded
+            // separately and reconciled with a checked literal fact at arm
+            // construction.
+            captureLiteralArithmetic = true;
+            if (leftIdent && rightIntLiteral) {
+              leafNodes.add(left);
+              captureLiteralNode = right;
+            } else {
+              captureLiteralNode = left;
+              leafNodes.add(right);
+            }
+          } else {
+            return rejectClosureCapability();
+          }
         } else {
           return rejectClosureCapability();
         }
@@ -14325,6 +14352,82 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                              orderedCaptureFacts[position]->capturedType,
                                              closure.source.clone()});
           environmentKeys.add(zc::mv(environmentKey));
+        }
+        if (captureLiteralArithmetic) {
+          // One capture plus one integer literal in one arithmetic binary. The
+          // binary combines the sole synthetic environment parameter with a
+          // constant operand; the arms are emitted in source operand order.
+          const ast::NodeId binaryLeft(
+              closureTree.node(closureValue).payload.words[ast::kBinaryExprLhsWord]);
+          const ast::NodeId binaryRight(
+              closureTree.node(closureValue).payload.words[ast::kBinaryExprRhsWord]);
+          auto captureBinaryCallIndex = factIndex(facts.calls(), closureValue);
+          if (captureBinaryCallIndex == zc::none) { return zc::none; }
+          size_t captureBinaryCallSlot = 0;
+          ZC_IF_SOME(value, captureBinaryCallIndex) { captureBinaryCallSlot = value; }
+          const auto& captureBinaryInvocation =
+              facts.calls().entries()[captureBinaryCallSlot].value.invocation;
+          if (!captureBinaryInvocation.selected.variant()
+                   .is<checker::checked::PrimitiveCallable>() ||
+              captureBinaryInvocation.arguments.size() != 2 ||
+              captureBinaryInvocation.arguments[0].sourceNode != binaryLeft ||
+              captureBinaryInvocation.arguments[1].sourceNode != binaryRight ||
+              captureBinaryInvocation.receiver != zc::none ||
+              captureBinaryInvocation.substitutions != zc::none ||
+              captureBinaryInvocation.witnesses != zc::none ||
+              captureBinaryInvocation.raises != zc::none ||
+              captureBinaryInvocation.successType != closureCallable.success ||
+              captureBinaryInvocation.resultType != closureCallable.success) {
+            return zc::none;
+          }
+          const auto captureBinaryOperation = captureBinaryInvocation.selected.variant()
+                                                  .get<checker::checked::PrimitiveCallable>()
+                                                  .operation;
+          if (!isScalarArithmeticOperation(captureBinaryOperation)) { return zc::none; }
+          auto literalIndex = factIndex(facts.literals(), captureLiteralNode);
+          if (literalIndex == zc::none) { return zc::none; }
+          size_t literalSlot = 0;
+          ZC_IF_SOME(value, literalIndex) { literalSlot = value; }
+          const auto& captureLiteralFact = facts.literals().entries()[literalSlot].value;
+          auto literalSpan =
+              bound.parsedModule().spanFor(closureTree.node(captureLiteralNode).range);
+          if (captureLiteralFact.node != captureLiteralNode ||
+              captureLiteralFact.type != closureCallable.success || literalSpan == zc::none ||
+              !sameSpan(captureLiteralFact.sourceSpan, ZC_ASSERT_NONNULL(literalSpan))) {
+            return zc::none;
+          }
+          const ast::NodeId captureLeafNode = capturingLeaves[0].node;
+          auto buildCaptureArm = [&](ast::NodeId operand) -> zc::Maybe<PendingConditionalArm> {
+            auto operandSpan = bound.parsedModule().spanFor(closureTree.node(operand).range);
+            if (operandSpan == zc::none) { return zc::none; }
+            if (operand == captureLeafNode) {
+              auto reference = HirParameterReferenceExpression{
+                  HirNodeId(), environmentKeys[capturingLeaves[0].factSlot].clone(),
+                  closureCallable.success, HirValueCategory::Place,
+                  ZC_ASSERT_NONNULL(operandSpan).clone()};
+              return PendingConditionalArm{zc::none,
+                                           zc::mv(reference),
+                                           zc::none,
+                                           closureCallable.success,
+                                           ZC_ASSERT_NONNULL(operandSpan).clone(),
+                                           zc::none,
+                                           operand};
+            }
+            return PendingConditionalArm{captureLiteralFact.literal.clone(),
+                                         zc::none,
+                                         zc::none,
+                                         closureCallable.success,
+                                         ZC_ASSERT_NONNULL(literalSpan).clone(),
+                                         zc::none,
+                                         captureLiteralNode};
+          };
+          auto captureLeftArm = buildCaptureArm(binaryLeft);
+          auto captureRightArm = buildCaptureArm(binaryRight);
+          if (captureLeftArm == zc::none || captureRightArm == zc::none) { return zc::none; }
+          return PendingFunctionShape{ComparisonReturn{PendingEqualityCondition{
+              zc::mv(ZC_ASSERT_NONNULL(captureLeftArm)), zc::mv(ZC_ASSERT_NONNULL(captureRightArm)),
+              closureCallable.success, closureCallable.success, captureBinaryOperation,
+              closureValueSpan.clone(), false, closureValue}}};
         }
         if (orderedCaptureFacts.size() == 1) {
           const ast::NodeId leafNode = capturingLeaves[0].node;

@@ -1260,7 +1260,48 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                             ir::IrFailureKind::InvalidFact, module, registries,
                                             index + 1);
       }
-      if (mixedParameterCapture) { binaryClosure = true; }
+      // RFC 0057 slice 2 capture-plus-literal form: a zero-parameter, one-Copy-
+      // capture closure whose sole return is an arithmetic binary with one
+      // captured identifier operand and one integer literal operand. The
+      // literal becomes a constant HIR operand, so the closure occupies the
+      // binary six-node stride carrying one environment parameter reference
+      // and one scalar literal. The operation is enforced as scalar arithmetic
+      // during binary-record reconciliation below.
+      bool captureLiteralArithmetic = false;
+      bool captureLiteralIsLeft = false;
+      ast::NodeId captureLiteralNode;
+      ast::NodeId captureIdentifierNode;
+      {
+        auto probeShape =
+            functionReturnShape(closureTree, closureTree.node(closureDefinition.node));
+        if (closureCaptures && closureParameterCount == 0 && orderedCaptureFacts.size() == 1 &&
+            earlyCallable.receiver == zc::none && earlyCallable.raises == zc::none &&
+            earlyCallable.abi == zc::none && probeShape != zc::none) {
+          const ast::NodeId probeValue = ZC_ASSERT_NONNULL(probeShape).value;
+          if (closureTree.contains(probeValue) &&
+              closureTree.node(probeValue).kind == ast::SyntaxKind::BinaryExpr) {
+            const ast::NodeId probeLeft(
+                closureTree.node(probeValue).payload.words[ast::kBinaryExprLhsWord]);
+            const ast::NodeId probeRight(
+                closureTree.node(probeValue).payload.words[ast::kBinaryExprRhsWord]);
+            if (closureTree.contains(probeLeft) && closureTree.contains(probeRight)) {
+              const bool leftIdent = closureTree.node(probeLeft).kind == ast::SyntaxKind::IdentExpr;
+              const bool rightIdent =
+                  closureTree.node(probeRight).kind == ast::SyntaxKind::IdentExpr;
+              const bool leftInt = closureTree.node(probeLeft).kind == ast::SyntaxKind::IntLiteral;
+              const bool rightInt =
+                  closureTree.node(probeRight).kind == ast::SyntaxKind::IntLiteral;
+              if ((leftIdent && rightInt) || (leftInt && rightIdent)) {
+                captureLiteralArithmetic = true;
+                captureLiteralIsLeft = leftInt;
+                captureLiteralNode = leftInt ? probeLeft : probeRight;
+                captureIdentifierNode = leftIdent ? probeLeft : probeRight;
+              }
+            }
+          }
+        }
+      }
+      if (mixedParameterCapture || captureLiteralArithmetic) { binaryClosure = true; }
       // A one-capture closure occupies four source-preorder node ids (function,
       // body, return, parameter reference); a two-capture closure occupies six
       // (function, body, left parameter reference, right parameter reference,
@@ -1340,6 +1381,20 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             candidateExpression.node.ordinal() >= expectedFunction + closureStride) {
           continue;
         }
+        if (captureLiteralArithmetic) {
+          // The one constant operand occupies the literal side of the binary
+          // (F+2 when left, F+3 when right); the other operand is an
+          // environment parameter reference handled in the loop below.
+          const HirNodeId expectedLiteralId =
+              hirId(expectedFunction + (captureLiteralIsLeft ? 2 : 3));
+          if (closureLiteral != zc::none || candidateExpression.node != expectedLiteralId) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::AdditionalFact, module,
+                                                registries, index + 1);
+          }
+          closureLiteral = candidateExpression;
+          continue;
+        }
         if (closureCaptures || parameterClosure) {
           // The single-leaf capture and parameterized shapes carry no scalar
           // literal expression; their value is a parameter reference (handled
@@ -1364,15 +1419,19 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                               index + 1);
         }
         if (binaryClosure) {
+          const HirNodeId captureLiteralOperandId =
+              hirId(expectedFunction + (captureLiteralIsLeft ? 2 : 3));
           if (candidateReference.node == hirId(expectedFunction + 2)) {
-            if (closureLeftParamRef != zc::none) {
+            if (closureLeftParamRef != zc::none ||
+                (captureLiteralArithmetic && candidateReference.node == captureLiteralOperandId)) {
               return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                   ir::IrFailureKind::AdditionalFact, module,
                                                   registries, index + 1);
             }
             closureLeftParamRef = candidateReference;
           } else if (candidateReference.node == hirId(expectedFunction + 3)) {
-            if (closureRightParamRef != zc::none) {
+            if (closureRightParamRef != zc::none ||
+                (captureLiteralArithmetic && candidateReference.node == captureLiteralOperandId)) {
               return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                   ir::IrFailureKind::AdditionalFact, module,
                                                   registries, index + 1);
@@ -1407,12 +1466,20 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           closureBinary = candidateBinary;
         }
       }
+      const bool captureLiteralIdentSidePresent =
+          captureLiteralIsLeft ? closureRightParamRef != zc::none : closureLeftParamRef != zc::none;
+      const bool captureLiteralRecordsComplete =
+          captureLiteralIsLeft ? closureLeftParamRef == zc::none : closureRightParamRef == zc::none;
       const bool closureRecordsComplete =
           closureReturn != zc::none &&
-          (binaryClosure ? (closureLeftParamRef != zc::none && closureRightParamRef != zc::none &&
-                            closureBinary != zc::none)
-                         : ((closureCaptures || parameterClosure) ? closureRightParamRef != zc::none
-                                                                  : closureLiteral != zc::none));
+          (binaryClosure
+               ? (captureLiteralArithmetic
+                      ? (captureLiteralIdentSidePresent && captureLiteralRecordsComplete &&
+                         closureLiteral != zc::none && closureBinary != zc::none)
+                      : (closureLeftParamRef != zc::none && closureRightParamRef != zc::none &&
+                         closureBinary != zc::none))
+               : ((closureCaptures || parameterClosure) ? closureRightParamRef != zc::none
+                                                        : closureLiteral != zc::none));
       if (!closureRecordsComplete) {
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                             ir::IrFailureKind::MissingRequiredFact, module,
@@ -1497,7 +1564,32 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               closureSourceValueValid = false;
             }
           } else if (orderedCaptureFacts.size() == 1 && !mixedParameterCapture) {
-            if (closureTree.node(closureSource.value).kind != ast::SyntaxKind::IdentExpr) {
+            if (captureLiteralArithmetic) {
+              // Capture-plus-literal arithmetic: the binary has one captured
+              // identifier operand and one integer literal operand; only the
+              // identifier is reconciled against the capture fact.
+              if (closureTree.node(closureSource.value).kind != ast::SyntaxKind::BinaryExpr) {
+                closureSourceValueValid = false;
+              } else {
+                const ast::NodeId captureLeft(
+                    closureTree.node(closureSource.value).payload.words[ast::kBinaryExprLhsWord]);
+                const ast::NodeId captureRight(
+                    closureTree.node(closureSource.value).payload.words[ast::kBinaryExprRhsWord]);
+                if (!closureTree.contains(captureLeft) || !closureTree.contains(captureRight)) {
+                  closureSourceValueValid = false;
+                } else {
+                  const bool orderedIdentThenLiteral =
+                      captureLeft == captureIdentifierNode && captureRight == captureLiteralNode;
+                  const bool orderedLiteralThenIdent =
+                      captureLeft == captureLiteralNode && captureRight == captureIdentifierNode;
+                  if (!orderedIdentThenLiteral && !orderedLiteralThenIdent) {
+                    closureSourceValueValid = false;
+                  } else {
+                    sourceLeafNodes.add(captureIdentifierNode);
+                  }
+                }
+              }
+            } else if (closureTree.node(closureSource.value).kind != ast::SyntaxKind::IdentExpr) {
               closureSourceValueValid = false;
             } else {
               sourceLeafNodes.add(closureSource.value);
@@ -1663,12 +1755,91 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                               ir::IrFailureKind::InvalidFact, module, registries,
                                               index + 1);
         }
+      } else if (binaryClosure && captureLiteralArithmetic) {
+        // Capture-plus-literal arithmetic closure: the environment parameter
+        // reference occupies the captured-identifier operand side while a
+        // scalar literal occupies the other operand side. The parameter targets
+        // the sole environment slot at ordinary position zero; the literal
+        // reconciles with a checked literal fact and the binary with the
+        // checker primitive call fact.
+        const auto& binaryRecord = ZC_ASSERT_NONNULL(closureBinary);
+        const auto& literalRecord = ZC_ASSERT_NONNULL(closureLiteral);
+        const ast::NodeId leftLeaf(
+            closureTree.node(closureValue).payload.words[ast::kBinaryExprLhsWord]);
+        const ast::NodeId rightLeaf(
+            closureTree.node(closureValue).payload.words[ast::kBinaryExprRhsWord]);
+        const bool identIsLeft = leftLeaf == captureIdentifierNode;
+        const auto& identRecord = identIsLeft ? ZC_ASSERT_NONNULL(closureLeftParamRef)
+                                              : ZC_ASSERT_NONNULL(closureRightParamRef);
+        auto identLeafSpan =
+            bound.parsedModule().spanFor(closureTree.node(captureIdentifierNode).range);
+        auto literalLeafSpan =
+            bound.parsedModule().spanFor(closureTree.node(captureLiteralNode).range);
+        auto environmentIdentityRecord = identity::CallableParameterIdentityRecord::from(
+            closureDefinition.key.clone(), identity::CallableParameterPosition::ordinary(0));
+        const identity::CallableParameterKey expectedEnvironmentKey =
+            identity::CallableParameterKey::compute(environmentIdentityRecord);
+        auto literalFactIndex = factIndex(facts.literals(), captureLiteralNode);
+        auto captureBinaryCallIndex = factIndex(facts.calls(), closureValue);
+        if ((leftLeaf != captureIdentifierNode && leftLeaf != captureLiteralNode) ||
+            (rightLeaf != captureIdentifierNode && rightLeaf != captureLiteralNode) ||
+            leftLeaf == rightLeaf || identLeafSpan == zc::none || literalLeafSpan == zc::none ||
+            literalFactIndex == zc::none || captureBinaryCallIndex == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        size_t literalSlot = 0;
+        ZC_IF_SOME(value, literalFactIndex) { literalSlot = value; }
+        size_t captureBinarySlot = 0;
+        ZC_IF_SOME(value, captureBinaryCallIndex) { captureBinarySlot = value; }
+        const auto& captureLiteralFact = facts.literals().entries()[literalSlot].value;
+        const auto& captureBinaryInvocation =
+            facts.calls().entries()[captureBinarySlot].value.invocation;
+        const auto& captureBinarySelected = captureBinaryInvocation.selected.variant();
+        const HirNodeId leftHirOperand = identIsLeft ? identRecord.node : literalRecord.node;
+        const HirNodeId rightHirOperand = identIsLeft ? literalRecord.node : identRecord.node;
+        if (!sameSpan(block.sourceSpan, expectedBlockSpan) ||
+            !sameSpan(returnRecord.sourceSpan, expectedReturnSpan) ||
+            !sameSpan(function.sourceSpan, closureDefinition.source) ||
+            !sameSpan(binaryRecord.sourceSpan, expectedValueSpan) ||
+            !sameSpan(identRecord.sourceSpan, ZC_ASSERT_NONNULL(identLeafSpan)) ||
+            !sameSpan(literalRecord.sourceSpan, ZC_ASSERT_NONNULL(literalLeafSpan)) ||
+            returnRecord.resultType != function.resultType ||
+            returnRecord.value != binaryRecord.node || binaryRecord.left != leftHirOperand ||
+            binaryRecord.right != rightHirOperand ||
+            binaryRecord.operandType != function.resultType ||
+            binaryRecord.type != function.resultType ||
+            binaryRecord.category != HirValueCategory::Value ||
+            identRecord.type != function.resultType ||
+            identRecord.category != HirValueCategory::Place ||
+            identRecord.parameter != expectedEnvironmentKey ||
+            literalRecord.type != function.resultType ||
+            literalRecord.category != HirValueCategory::Value ||
+            captureLiteralFact.node != captureLiteralNode ||
+            captureLiteralFact.type != function.resultType ||
+            !sameConstant(literalRecord.value, captureLiteralFact.literal, module, registries,
+                          semanticTypes) ||
+            !captureBinarySelected.is<checker::checked::PrimitiveCallable>() ||
+            captureBinaryInvocation.arguments.size() != 2 ||
+            captureBinaryInvocation.arguments[0].sourceNode != leftLeaf ||
+            captureBinaryInvocation.arguments[1].sourceNode != rightLeaf ||
+            captureBinaryInvocation.receiver != zc::none ||
+            captureBinaryInvocation.substitutions != zc::none ||
+            captureBinaryInvocation.witnesses != zc::none ||
+            captureBinaryInvocation.raises != zc::none ||
+            captureBinaryInvocation.successType != function.resultType ||
+            captureBinaryInvocation.resultType != function.resultType ||
+            !isScalarArithmeticOperation(
+                captureBinarySelected.get<checker::checked::PrimitiveCallable>().operation) ||
+            binaryRecord.operation !=
+                captureBinarySelected.get<checker::checked::PrimitiveCallable>().operation ||
+            !typeExists(function.resultType, semanticTypes)) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
       } else if (binaryClosure) {
-        // Two-capture arithmetic closure: function F, body F+1, the two
-        // parameter references F+2/F+3, the primitive binary F+4, and the
-        // return F+5. Each parameter reference targets the environment slot of
-        // the matching source leaf (in source operand order); the binary
-        // reconciles with the checker primitive call fact.
         const auto& leftRecord = ZC_ASSERT_NONNULL(closureLeftParamRef);
         const auto& rightRecord = ZC_ASSERT_NONNULL(closureRightParamRef);
         const auto& binaryRecord = ZC_ASSERT_NONNULL(closureBinary);
