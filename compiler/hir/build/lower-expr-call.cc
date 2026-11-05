@@ -56,20 +56,32 @@ void lowerDirectCallReturnFunction(PendingFunctionDeclaration&& function, HirFnC
 
 void lowerClosureValueCallReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
   auto& shape = function.shape.get<ClosureValueCallReturn>();
+  zc::Vector<ClosureValueCallReturn::CapturedLocal> capturedLocals = zc::mv(shape.capturedLocals);
+  const size_t capturedCount = capturedLocals.size();
   HirLocalBinding originBinding = zc::mv(shape.originBinding);
   HirClosureAddressExpression closureAddress = zc::mv(shape.closureAddress);
   zc::Vector<ClosureValueCallReturn::AliasLocal> aliases = zc::mv(shape.aliases);
   HirLocalReferenceExpression functionReference = zc::mv(shape.functionReference);
   HirIndirectCallExpression call = zc::mv(shape.call);
 
-  // Fixed source-preorder stride: function F, body F+1, then per slot one
-  // binding and one initializer node (F+2+2i / F+3+2i), then return F+2+2K,
-  // the indirect call's pointer local reference F+3+2K, and the indirect call
-  // F+4+2K. All body nodes except function, body, return, and the call itself
-  // are synthetic: the dedicated verifier branch anchors them to the source
-  // shape directly.
+  // Fixed source-preorder stride: function F, body F+1, then per captured
+  // local one binding and one scalar-literal initializer (2N nodes), then per
+  // pointer slot one binding and one initializer node (origin address or copy
+  // reference), then return, the indirect call's pointer local reference, and
+  // the indirect call. All body nodes except function, body, return, and the
+  // call itself are synthetic: the dedicated verifier branch anchors them to
+  // the source shape directly.
   const HirNodeId functionId = ctx.allocNode(function.sourceNode);
   const HirNodeId bodyId = ctx.allocNode(function.bodyNode);
+  struct AllocatedCaptured {
+    HirNodeId bindingId;
+    HirNodeId initializerId;
+  };
+  zc::Vector<AllocatedCaptured> allocatedCaptured;
+  for (size_t index = 0; index < capturedCount; ++index) {
+    allocatedCaptured.add(
+        AllocatedCaptured{ctx.allocNode(ast::NodeId()), ctx.allocNode(ast::NodeId())});
+  }
   const HirNodeId originBindingId = ctx.allocNode(ast::NodeId());
   const HirNodeId originInitializerId = ctx.allocNode(ast::NodeId());
   zc::Vector<HirNodeId> aliasBindingIds;
@@ -87,20 +99,34 @@ void lowerClosureValueCallReturnFunction(PendingFunctionDeclaration&& function, 
                                          function.visibility.clone(), function.linkage,
                                          function.declarationSpan.clone(), bodyId, zc::none});
   zc::Vector<HirNodeId> statements;
+  for (const auto& allocated : allocatedCaptured) { statements.add(allocated.bindingId); }
   statements.add(originBindingId);
   for (const auto bindingId : aliasBindingIds) { statements.add(bindingId); }
   statements.add(returnId);
   ctx.addBlock(HirBlockStatement{bodyId, zc::mv(statements), function.bodySpan.clone()});
 
-  // Origin slot (local 1): initialized from the closure address.
-  ctx.addLocal(HirLocalBinding{originBindingId, hirLocalId(1), closureAddress.functionType,
-                               originInitializerId, originBinding.sourceSpan.clone(),
+  // Leading captured locals (slots 1..N), each initialized from a scalar
+  // literal and passed by value as an indirect-call environment argument.
+  for (size_t index = 0; index < capturedCount; ++index) {
+    const auto& captured = capturedLocals[index];
+    ctx.addLocal(HirLocalBinding{allocatedCaptured[index].bindingId, hirLocalId(index + 1),
+                                 captured.binding.type, allocatedCaptured[index].initializerId,
+                                 captured.binding.sourceSpan.clone(),
+                                 ZC_ASSERT_NONNULL(captured.binding.initializerSpan).clone()});
+    ctx.addExpression(HirScalarLiteralExpression{
+        allocatedCaptured[index].initializerId, captured.binding.type, captured.literal.clone(),
+        HirValueCategory::Value, ZC_ASSERT_NONNULL(captured.binding.initializerSpan).clone()});
+  }
+  // Origin pointer slot (local N+1) is initialized from the closure address.
+  ctx.addLocal(HirLocalBinding{originBindingId, hirLocalId(capturedCount + 1),
+                               closureAddress.functionType, originInitializerId,
+                               originBinding.sourceSpan.clone(),
                                ZC_ASSERT_NONNULL(originBinding.initializerSpan).clone()});
   ctx.addClosureAddress(HirClosureAddressExpression{originInitializerId, closureAddress.closure,
                                                     closureAddress.functionType,
                                                     closureAddress.sourceSpan.clone()});
-  // Each alias slot initializes from a whole-local reference to the previous
-  // slot.
+  // Each alias pointer slot initializes from a whole-local reference to the
+  // previous pointer slot.
   for (size_t index = 0; index < aliases.size(); ++index) {
     auto& alias = aliases[index];
     ctx.addLocal(HirLocalBinding{aliasBindingIds[index], alias.binding.local, alias.binding.type,
@@ -111,7 +137,7 @@ void lowerClosureValueCallReturnFunction(PendingFunctionDeclaration&& function, 
         alias.initializerReference.type, alias.initializerReference.category,
         alias.initializerReference.sourceSpan.clone()});
   }
-  // The indirect call reads the final slot (local K).
+  // The indirect call reads the final pointer slot.
   ctx.addLocalReference(HirLocalReferenceExpression{
       functionReferenceId, functionReference.local, functionReference.type,
       functionReference.category, functionReference.sourceSpan.clone()});

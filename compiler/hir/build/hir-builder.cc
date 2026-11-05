@@ -1176,6 +1176,290 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                      zc::mv(pendingArguments),
                                                      ZC_ASSERT_NONNULL(callSpan).clone()};
         zc::Array<uint8_t> orderingKey = definition.key.encode();
+        pendingFunctions.add(
+            PendingFunctionDeclaration{definition.definition,
+                                       definition.node,
+                                       callable.success,
+                                       {},
+                                       zc::none,
+                                       zc::mv(ZC_ASSERT_NONNULL(functionVisibility)),
+                                       ZC_ASSERT_NONNULL(functionLinkage),
+                                       definition.source.clone(),
+                                       ZC_ASSERT_NONNULL(bodySpan).clone(),
+                                       ZC_ASSERT_NONNULL(returnSpan).clone(),
+                                       ZC_ASSERT_NONNULL(callSpan).clone(),
+                                       zc::mv(orderingKey),
+                                       shape.body,
+                                       shape.returnStatement,
+                                       shape.value,
+                                       zc::none,
+                                       ClosureValueCallReturn{{},
+                                                              zc::mv(pendingOriginBinding),
+                                                              zc::mv(pendingClosureAddress),
+                                                              zc::mv(pendingAliases),
+                                                              zc::mv(pendingFunctionReference),
+                                                              zc::mv(pendingCall)}});
+        continue;
+      }
+      if (shape.returnsCapturingClosureValueCall) {
+        // RFC 0057 slice 2 captured-value carrier: `let x: T = <lit>;
+        // let f = fn() -> T { return x; }; let g = f; return g();`. The leading
+        // captured locals become by-value environment arguments of the
+        // indirect call; the pointer chain materializes the closure address
+        // and copies exactly like the non-capturing value path. The source
+        // call and checker call fact carry zero arguments; the verified
+        // capture facts are the sole admission gate and fix environment order.
+        const auto rejectCapturedValue = [&]() {
+          return rejectHirCapability<HirModuleCandidate>(
+              definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
+              definition.source.clone());
+        };
+        const auto& signature = *signaturePtr;
+        if (!signature.payload.variant().is<checker::signature::CallableSignature>() ||
+            !signature.scope.variant().is<checker::signature::ModuleDefinitionSignatureScope>()) {
+          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                               ir::IrFailureKind::InvalidFact, module, registries,
+                                               ordinal + 2);
+        }
+        const auto& callable =
+            signature.payload.variant().get<checker::signature::CallableSignature>();
+        if (callable.parameters.size() != 0 || callable.receiver != zc::none ||
+            callable.raises != zc::none || callable.abi != zc::none) {
+          return rejectCapturedValue();
+        }
+        const auto& root = signatures.roots[rootSlot];
+        auto functionVisibility = visibility(root.visibility);
+        auto functionLinkage = linkage(callable);
+        if (functionVisibility == zc::none || functionLinkage == zc::none ||
+            signature.definitionKind != identity::DefinitionKind::Function ||
+            root.canonicalDefinition != definition.definition || root.sourceModule != module ||
+            !sameSpan(signature.declarationSpan, definition.source)) {
+          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                               ir::IrFailureKind::InvalidFact, module, registries,
+                                               ordinal + 2);
+        }
+        const binder::MaterializedClosureDefinitionEntry* closureRow = nullptr;
+        for (const auto& closure : bound.definitions().closureDefinitions()) {
+          if (closure.node == shape.closureAliasInitializer) {
+            closureRow = &closure;
+            break;
+          }
+        }
+        if (closureRow == nullptr) { return rejectCapturedValue(); }
+        const auto closureDefId = closureRow->definition;
+        // One or two verified Copy captures in canonical environment order.
+        auto orderedFacts = sortedClosureCaptureFacts(facts.captures(), closureRow->closureKey);
+        if (orderedFacts.size() < 1 || orderedFacts.size() > 2 ||
+            orderedFacts.size() != shape.capturedLocals.size()) {
+          return rejectCapturedValue();
+        }
+        for (const auto* captureFact : orderedFacts) {
+          if (captureFact->mode != checker::checked::CaptureMode::Copy ||
+              captureFact->origin != checker::checked::CaptureOrigin::Inferred ||
+              captureFact->capturedType != callable.success) {
+            return rejectCapturedValue();
+          }
+        }
+        // Exact-set reconciliation of capture facts against the leading locals.
+        zc::Vector<binder::OwnerLocalBindingId> leadingBindings;
+        for (const auto& capturedLocal : shape.capturedLocals) {
+          auto capturedBinding =
+              ownerLocalBindingForPattern(bound.definitions(), capturedLocal.pattern, tree);
+          if (capturedBinding == zc::none) { return rejectCapturedValue(); }
+          leadingBindings.add(ZC_ASSERT_NONNULL(capturedBinding));
+        }
+        zc::Vector<size_t> factLocalSlots;
+        for (const auto* captureFact : orderedFacts) {
+          const auto factBinding =
+              captureFact->target.value().get<binder::OwnerLocalBindingTarget>().binding;
+          zc::Maybe<size_t> matchedSlot;
+          for (size_t index = 0; index < leadingBindings.size(); ++index) {
+            if (leadingBindings[index] != factBinding) { continue; }
+            if (matchedSlot != zc::none) { return rejectCapturedValue(); }
+            matchedSlot = index;
+          }
+          if (matchedSlot == zc::none) { return rejectCapturedValue(); }
+          size_t slot = 0;
+          ZC_IF_SOME(value, matchedSlot) { slot = value; }
+          for (const auto existing : factLocalSlots) {
+            if (existing == slot) { return rejectCapturedValue(); }
+          }
+          factLocalSlots.add(slot);
+        }
+        // Resolve the pointer chain bindings exactly like the non-capturing
+        // value path; pointer slots follow the captured locals.
+        auto originBinding =
+            ownerLocalBindingForPattern(bound.definitions(), shape.closureAliasPattern, tree);
+        if (originBinding == zc::none) { return rejectCapturedValue(); }
+        zc::Vector<binder::OwnerLocalBindingId> chainBindings;
+        chainBindings.add(ZC_ASSERT_NONNULL(originBinding));
+        for (const auto& copy : shape.closureValueCopies) {
+          auto copyBinding = ownerLocalBindingForPattern(bound.definitions(), copy.pattern, tree);
+          if (copyBinding == zc::none) { return rejectCapturedValue(); }
+          for (const auto existing : chainBindings) {
+            if (existing == ZC_ASSERT_NONNULL(copyBinding)) { return rejectCapturedValue(); }
+          }
+          auto copyInitializerBinding = resolvedOwnerLocal(bound.bindings(), copy.initializer);
+          if (copyInitializerBinding == zc::none || ZC_ASSERT_NONNULL(copyInitializerBinding) !=
+                                                        chainBindings[chainBindings.size() - 1]) {
+            return rejectCapturedValue();
+          }
+          chainBindings.add(ZC_ASSERT_NONNULL(copyBinding));
+        }
+        const size_t capturedCount = orderedFacts.size();
+        const ast::NodeId callNode(shape.value);
+        const ast::NodeId calleeNode(
+            tree.node(callNode).payload.words[ast::kCallExpressionCalleeWord]);
+        const ast::NodeList callTypeArguments{
+            tree.node(callNode).payload.words[ast::kCallExpressionTypeArgsFirstWord],
+            tree.node(callNode).payload.words[ast::kCallExpressionTypeArgsSizeWord]};
+        const ast::NodeList callArguments{
+            tree.node(callNode).payload.words[ast::kCallExpressionArgsFirstWord],
+            tree.node(callNode).payload.words[ast::kCallExpressionArgsSizeWord]};
+        if (!tree.contains(calleeNode) ||
+            tree.node(calleeNode).kind != ast::SyntaxKind::IdentExpr ||
+            !tree.contains(callTypeArguments) || !callTypeArguments.empty() ||
+            !tree.contains(callArguments) || !callArguments.empty()) {
+          return rejectCapturedValue();
+        }
+        {
+          auto calleeBinding = resolvedOwnerLocal(bound.bindings(), calleeNode);
+          if (calleeBinding == zc::none ||
+              ZC_ASSERT_NONNULL(calleeBinding) != chainBindings[chainBindings.size() - 1]) {
+            return rejectCapturedValue();
+          }
+        }
+        auto calleeTypeIndex = factIndex(facts.nodeTypes(), calleeNode);
+        auto checkedCallIndex = factIndex(facts.calls(), callNode);
+        auto callKey = checkedNodeKey(tree, bound.parsedModule(), callNode);
+        if (calleeTypeIndex == zc::none || checkedCallIndex == zc::none || callKey == zc::none) {
+          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                               ir::IrFailureKind::MissingRequiredFact, module,
+                                               registries, ordinal + 2);
+        }
+        size_t calleeTypeSlot = 0;
+        size_t checkedCallSlot = 0;
+        ZC_IF_SOME(value, calleeTypeIndex) { calleeTypeSlot = value; }
+        ZC_IF_SOME(value, checkedCallIndex) { checkedCallSlot = value; }
+        const auto& invocation = facts.calls().entries()[checkedCallSlot].value.invocation;
+        const auto& selected = invocation.selected.variant();
+        if (facts.nodeTypes().entries()[calleeTypeSlot].value != invocation.calleeType ||
+            !selected.is<checker::checked::DirectCallable>() ||
+            selected.get<checker::checked::DirectCallable>().callee != closureDefId ||
+            invocation.arguments.size() != 0 || invocation.receiver != zc::none ||
+            invocation.receiverMode != zc::none || invocation.receiverAdjustment != zc::none ||
+            invocation.substitutions != zc::none || invocation.witnesses != zc::none ||
+            invocation.raises != zc::none || invocation.successType != callable.success ||
+            invocation.resultType != callable.success ||
+            !typeExists(invocation.calleeType, checkedModule.semanticTypes())) {
+          return rejectCapturedValue();
+        }
+        // Resolve each captured local's literal fact and spans, in canonical
+        // capture order.
+        struct ResolvedCapturedLocal {
+          ast::NodeId pattern;
+          identity::SemanticTypeId type;
+          checker::checked::CanonicalConstValue literal;
+          identity::SourceSpan patternSpan;
+          identity::SourceSpan initializerSpan;
+        };
+        zc::Vector<ResolvedCapturedLocal> resolvedCaptured;
+        for (size_t index = 0; index < capturedCount; ++index) {
+          const auto* captureFact = orderedFacts[index];
+          const auto& capturedLocal = shape.capturedLocals[factLocalSlots[index]];
+          auto literalIndex = factIndex(facts.literals(), capturedLocal.initializer);
+          if (literalIndex == zc::none) { return rejectCapturedValue(); }
+          size_t literalSlot = 0;
+          ZC_IF_SOME(value, literalIndex) { literalSlot = value; }
+          const auto& literalFact = facts.literals().entries()[literalSlot].value;
+          if (literalFact.node != capturedLocal.initializer ||
+              literalFact.type != captureFact->capturedType) {
+            return rejectCapturedValue();
+          }
+          auto patternSpan = bound.parsedModule().spanFor(tree.node(capturedLocal.pattern).range);
+          auto initializerSpan =
+              bound.parsedModule().spanFor(tree.node(capturedLocal.initializer).range);
+          if (patternSpan == zc::none || initializerSpan == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::MissingRequiredFact, module,
+                                                 registries, ordinal + 2);
+          }
+          resolvedCaptured.add(ResolvedCapturedLocal{
+              capturedLocal.pattern, captureFact->capturedType, literalFact.literal.clone(),
+              ZC_ASSERT_NONNULL(patternSpan).clone(), ZC_ASSERT_NONNULL(initializerSpan).clone()});
+        }
+        auto bodySpan = bound.parsedModule().spanFor(tree.node(shape.body).range);
+        auto returnSpan = bound.parsedModule().spanFor(tree.node(shape.returnStatement).range);
+        auto callSpan = bound.parsedModule().spanFor(tree.node(callNode).range);
+        auto calleeSpan = bound.parsedModule().spanFor(tree.node(calleeNode).range);
+        auto closureSpan =
+            bound.parsedModule().spanFor(tree.node(shape.closureAliasInitializer).range);
+        auto originPatternSpan =
+            bound.parsedModule().spanFor(tree.node(shape.closureAliasPattern).range);
+        if (bodySpan == zc::none || returnSpan == zc::none || callSpan == zc::none ||
+            calleeSpan == zc::none || closureSpan == zc::none || originPatternSpan == zc::none) {
+          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                               ir::IrFailureKind::MissingRequiredFact, module,
+                                               registries, ordinal + 2);
+        }
+        const identity::SemanticTypeId functionType = invocation.calleeType;
+        zc::Vector<ClosureValueCallReturn::CapturedLocal> pendingCaptured;
+        for (size_t index = 0; index < capturedCount; ++index) {
+          const auto& resolved = resolvedCaptured[index];
+          pendingCaptured.add(ClosureValueCallReturn::CapturedLocal{
+              HirLocalBinding{HirNodeId(), hirLocalId(index + 1), resolved.type, HirNodeId(),
+                              resolved.patternSpan.clone(), resolved.initializerSpan.clone()},
+              resolved.literal.clone()});
+        }
+        zc::Vector<ClosureValueCallReturn::AliasLocal> pendingAliases;
+        for (size_t index = 0; index < shape.closureValueCopies.size(); ++index) {
+          const auto& copy = shape.closureValueCopies[index];
+          auto patternSpan = bound.parsedModule().spanFor(tree.node(copy.pattern).range);
+          auto initializerSpan = bound.parsedModule().spanFor(tree.node(copy.initializer).range);
+          if (patternSpan == zc::none || initializerSpan == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::MissingRequiredFact, module,
+                                                 registries, ordinal + 2);
+          }
+          pendingAliases.add(ClosureValueCallReturn::AliasLocal{
+              HirLocalBinding{HirNodeId(), hirLocalId(capturedCount + index + 2), functionType,
+                              HirNodeId(), ZC_ASSERT_NONNULL(patternSpan).clone(),
+                              ZC_ASSERT_NONNULL(initializerSpan).clone()},
+              HirLocalReferenceExpression{HirNodeId(), hirLocalId(capturedCount + index + 1),
+                                          functionType, HirValueCategory::Place,
+                                          ZC_ASSERT_NONNULL(initializerSpan).clone()}});
+        }
+        auto pendingOriginBinding = HirLocalBinding{HirNodeId(),
+                                                    hirLocalId(capturedCount + 1),
+                                                    functionType,
+                                                    HirNodeId(),
+                                                    ZC_ASSERT_NONNULL(originPatternSpan).clone(),
+                                                    ZC_ASSERT_NONNULL(closureSpan).clone()};
+        auto pendingClosureAddress = HirClosureAddressExpression{
+            HirNodeId(), closureDefId, functionType, ZC_ASSERT_NONNULL(closureSpan).clone()};
+        const HirLocalId finalSlot = hirLocalId(capturedCount + chainBindings.size());
+        auto pendingFunctionReference = HirLocalReferenceExpression{
+            HirNodeId(), finalSlot, functionType, HirValueCategory::Place,
+            ZC_ASSERT_NONNULL(calleeSpan).clone()};
+        zc::Vector<HirDirectCallArgument> pendingArguments;
+        for (size_t index = 0; index < capturedCount; ++index) {
+          const auto& resolved = resolvedCaptured[index];
+          zc::Maybe<checker::checked::CanonicalConstValue> noValue;
+          zc::Maybe<identity::CallableParameterKey> noParameter;
+          zc::Maybe<HirLocalId> argumentLocal = hirLocalId(index + 1);
+          zc::Maybe<identity::DefId> noField;
+          zc::Maybe<checker::PrimitiveOperation> noComparison;
+          pendingArguments.add(HirDirectCallArgument{
+              resolved.type, zc::mv(noValue), zc::mv(noParameter), zc::mv(argumentLocal),
+              zc::mv(noField), zc::mv(noComparison), resolved.patternSpan.clone()});
+        }
+        auto pendingCall = HirIndirectCallExpression{HirNodeId(),
+                                                     HirNodeId(),
+                                                     closureDefId,
+                                                     callable.success,
+                                                     zc::mv(pendingArguments),
+                                                     ZC_ASSERT_NONNULL(callSpan).clone()};
+        zc::Array<uint8_t> orderingKey = definition.key.encode();
         pendingFunctions.add(PendingFunctionDeclaration{
             definition.definition,
             definition.node,
@@ -1193,9 +1477,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             shape.returnStatement,
             shape.value,
             zc::none,
-            ClosureValueCallReturn{zc::mv(pendingOriginBinding), zc::mv(pendingClosureAddress),
-                                   zc::mv(pendingAliases), zc::mv(pendingFunctionReference),
-                                   zc::mv(pendingCall)}});
+            ClosureValueCallReturn{zc::mv(pendingCaptured), zc::mv(pendingOriginBinding),
+                                   zc::mv(pendingClosureAddress), zc::mv(pendingAliases),
+                                   zc::mv(pendingFunctionReference), zc::mv(pendingCall)}});
         continue;
       }
       if (shape.isConditional) {

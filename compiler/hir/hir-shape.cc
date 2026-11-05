@@ -3079,6 +3079,149 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
       }
     }
   }
+  // RFC 0057 slice 2 captured closure-value shape: one or two leading
+  // scalar-literal-initialized lets captured by value, then a
+  // `let f = fn() -> T { .. };` origin, zero or more identifier-copy lets
+  // (`let g = f;`), and a trailing zero-source-argument `return g();` through
+  // the final pointer slot:
+  // `let x: T = <lit>; let f = fn() -> T { return x; }; let g = f; return g();`.
+  // Structural only; the checker capture facts and the builder gate admission.
+  if (statements.size >= 3) {
+    // Walk the let run backwards from the return: zero or more identifier
+    // copies, exactly one function-expression origin, then one or two scalar
+    // literal lets.
+    bool structureMatches = true;
+    size_t cursor = statements.size - 2;
+    zc::Vector<FunctionReturnShape::ClosureValueCopy> capturedValueCopies;
+    ast::NodeId capturedOriginLet;
+    ast::NodeId capturedOriginPattern;
+    ast::NodeId capturedOriginInitializer;
+    while (cursor > 0) {
+      auto item = statementItem(tree, tree.list(statements)[cursor]);
+      if (item == zc::none) {
+        structureMatches = false;
+        break;
+      }
+      ast::NodeId letNode;
+      ZC_IF_SOME(value, item) { letNode = value; }
+      auto declarator = localDeclarator(tree, letNode);
+      if (declarator == zc::none || tree.node(letNode).kind != ast::SyntaxKind::LetStmt ||
+          static_cast<ast::BindingDeclarationKind>(
+              tree.node(letNode).payload.words[ast::kLetStmtKindWord]) !=
+              ast::BindingDeclarationKind::Let) {
+        structureMatches = false;
+        break;
+      }
+      ast::NodeId declaratorNode;
+      ZC_IF_SOME(value, declarator) { declaratorNode = value; }
+      const ast::NodeId pattern(
+          tree.node(declaratorNode).payload.words[ast::kVariableDeclaratorPatternWord]);
+      const ast::NodeId initializer(
+          tree.node(declaratorNode).payload.words[ast::kVariableDeclaratorInitWord]);
+      if (!tree.contains(pattern) ||
+          tree.node(pattern).kind != ast::SyntaxKind::IdentifierPattern ||
+          !tree.contains(initializer)) {
+        structureMatches = false;
+        break;
+      }
+      if (tree.node(initializer).kind == ast::SyntaxKind::FunctionExpression) {
+        capturedOriginLet = letNode;
+        capturedOriginPattern = pattern;
+        capturedOriginInitializer = initializer;
+        break;
+      }
+      if (tree.node(initializer).kind != ast::SyntaxKind::IdentExpr) {
+        structureMatches = false;
+        break;
+      }
+      capturedValueCopies.add(FunctionReturnShape::ClosureValueCopy{letNode, pattern, initializer});
+      --cursor;
+    }
+    if (structureMatches && tree.contains(capturedOriginInitializer)) {
+      // Copies were collected from the final slot backwards; reverse to
+      // origin-first order and validate each initializer names the previous
+      // slot's pattern, starting at the origin pattern.
+      zc::Vector<FunctionReturnShape::ClosureValueCopy> orderedCopies;
+      for (size_t index = capturedValueCopies.size(); index > 0; --index) {
+        orderedCopies.add(capturedValueCopies[index - 1]);
+      }
+      ast::NodeId expectedPattern = capturedOriginPattern;
+      for (const auto& copy : orderedCopies) {
+        if (!matchesLocalReference(tree, expectedPattern, copy.initializer)) {
+          structureMatches = false;
+          break;
+        }
+        expectedPattern = copy.pattern;
+      }
+      const size_t originIndex = cursor;
+      zc::Vector<FunctionReturnShape::CapturedScalarLocal> capturedLocalShapes;
+      if (structureMatches) {
+        for (size_t index = 0; index < originIndex; ++index) {
+          auto capturedItem = statementItem(tree, tree.list(statements)[index]);
+          if (capturedItem == zc::none) {
+            structureMatches = false;
+            break;
+          }
+          ast::NodeId capturedLet;
+          ZC_IF_SOME(value, capturedItem) { capturedLet = value; }
+          auto capturedDeclarator = localDeclarator(tree, capturedLet);
+          if (capturedDeclarator == zc::none ||
+              tree.node(capturedLet).kind != ast::SyntaxKind::LetStmt ||
+              static_cast<ast::BindingDeclarationKind>(
+                  tree.node(capturedLet).payload.words[ast::kLetStmtKindWord]) !=
+                  ast::BindingDeclarationKind::Let) {
+            structureMatches = false;
+            break;
+          }
+          ast::NodeId capturedDeclaratorNode;
+          ZC_IF_SOME(value, capturedDeclarator) { capturedDeclaratorNode = value; }
+          const ast::NodeId capturedPattern(
+              tree.node(capturedDeclaratorNode).payload.words[ast::kVariableDeclaratorPatternWord]);
+          const ast::NodeId capturedInitializer(
+              tree.node(capturedDeclaratorNode).payload.words[ast::kVariableDeclaratorInitWord]);
+          if (!tree.contains(capturedPattern) ||
+              tree.node(capturedPattern).kind != ast::SyntaxKind::IdentifierPattern ||
+              !tree.contains(capturedInitializer) ||
+              !isScalarLiteral(tree.node(capturedInitializer).kind)) {
+            structureMatches = false;
+            break;
+          }
+          capturedLocalShapes.add(FunctionReturnShape::CapturedScalarLocal{
+              capturedLet, capturedPattern, capturedInitializer});
+        }
+      }
+      if (structureMatches && capturedLocalShapes.size() >= 1 && capturedLocalShapes.size() <= 2 &&
+          tree.node(value).kind == ast::SyntaxKind::CallExpression) {
+        const ast::NodeId callCallee(
+            tree.node(value).payload.words[ast::kCallExpressionCalleeWord]);
+        const ast::NodeList callTypeArguments{
+            tree.node(value).payload.words[ast::kCallExpressionTypeArgsFirstWord],
+            tree.node(value).payload.words[ast::kCallExpressionTypeArgsSizeWord]};
+        const ast::NodeList callArguments{
+            tree.node(value).payload.words[ast::kCallExpressionArgsFirstWord],
+            tree.node(value).payload.words[ast::kCallExpressionArgsSizeWord]};
+        const ast::NodeId finalPattern = orderedCopies.size() == 0
+                                             ? capturedOriginPattern
+                                             : orderedCopies[orderedCopies.size() - 1].pattern;
+        if (tree.contains(callCallee) && tree.node(callCallee).kind == ast::SyntaxKind::IdentExpr &&
+            tree.contains(callTypeArguments) && callTypeArguments.empty() &&
+            tree.contains(callArguments) && callArguments.empty() &&
+            matchesLocalReference(tree, finalPattern, callCallee)) {
+          FunctionReturnShape capturedValueShape{};
+          capturedValueShape.body = body;
+          capturedValueShape.returnStatement = returnNode;
+          capturedValueShape.value = value;
+          capturedValueShape.returnsCapturingClosureValueCall = true;
+          capturedValueShape.capturedLocals = zc::mv(capturedLocalShapes);
+          capturedValueShape.closureAliasLet = capturedOriginLet;
+          capturedValueShape.closureAliasPattern = capturedOriginPattern;
+          capturedValueShape.closureAliasInitializer = capturedOriginInitializer;
+          capturedValueShape.closureValueCopies = zc::mv(orderedCopies);
+          return capturedValueShape;
+        }
+      }
+    }
+  }
   // Closure-value copy-chain call shape: a leading `let f = fn(..) { .. };`
   // origin for a zero-capture closure, one or more identifier-copy lets
   // (`let g = f;`), and a trailing `return g(args);` through the final slot.

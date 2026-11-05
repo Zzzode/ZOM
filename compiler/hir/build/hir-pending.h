@@ -1020,6 +1020,14 @@ struct DirectCallReturn {
 /// the previous slot; the indirect call's function names a local reference to
 /// the final slot. Node ids are placeholders allocated by the lowerer.
 struct ClosureValueCallReturn {
+  // RFC 0057 slice 2: leading scalar locals captured by value and passed as
+  // the closure's implicit by-value environment arguments. Empty on the
+  // non-capturing slice 1b value path.
+  struct CapturedLocal final {
+    HirLocalBinding binding;
+    checker::checked::CanonicalConstValue literal;
+  };
+  zc::Vector<CapturedLocal> capturedLocals;
   HirLocalBinding originBinding;
   HirClosureAddressExpression closureAddress;
   struct AliasLocal final {

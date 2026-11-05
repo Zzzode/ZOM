@@ -332,6 +332,14 @@ struct FunctionReturnShape final {
   // order, the canonical environment field order. The alias statement itself
   // stays slotless.
   bool returnsCapturingClosureAliasCall = false;
+  // RFC 0057 slice 2 captured closure-value shape: one or two leading
+  // scalar-literal-initialized lets captured by value, a leading
+  // `let f = fn() -> T { .. };` origin, one or more identifier-copy lets
+  // (`let g = f;`), and a trailing zero-source-argument `return g();` through
+  // the final pointer slot. The pointer chain reuses the closure value fields
+  // above; `capturedLocals` holds the leading captured scalar locals in
+  // owner-local declaration order, the canonical environment field order.
+  bool returnsCapturingClosureValueCall = false;
   struct CapturedScalarLocal final {
     ast::NodeId let{};
     ast::NodeId pattern{};

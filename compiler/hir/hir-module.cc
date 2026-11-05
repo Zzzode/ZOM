@@ -14622,6 +14622,538 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       nextFunction += static_cast<uint32_t>(valueCallStride);
       continue;
     }
+    // RFC 0057 slice 2 captured closure-value caller: N leading captured scalar
+    // locals (N in 1..2), K pointer-chain slots (origin closure address plus K-1
+    // copies), and a trailing zero-source-argument indirect call through the
+    // final slot. The HIR preorder is the value-call layout with N literal
+    // slots prepended: function F, body F+1, per capture binding/literal
+    // F+2+2i/F+3+2i, then per pointer slot binding/initializer, then return,
+    // the pointer reference, and the indirect call with N implicit local 1..N
+    // by-value environment arguments in canonical capture order. The source
+    // call and checker facts carry zero arguments.
+    if (sourceShapeMaybe != zc::none &&
+        ZC_ASSERT_NONNULL(sourceShapeMaybe).returnsCapturingClosureValueCall) {
+      const FunctionReturnShape& source = ZC_ASSERT_NONNULL(sourceShapeMaybe);
+      const auto rejectCapturedValueCall = [&]() {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      };
+      const auto rejectCapturedValueCallMissing = [&]() {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::MissingRequiredFact, module,
+                                            registries, index + 1);
+      };
+      const size_t capturedCount = source.capturedLocals.size();
+      if (capturedCount < 1 || capturedCount > 2) { return rejectCapturedValueCall(); }
+      const size_t copyCount = source.closureValueCopies.size();
+      const size_t pointerCount = copyCount + 1;
+      const size_t slotCount = capturedCount + pointerCount;
+      const size_t capturedValueStride = 5 + 2 * slotCount;
+      const HirNodeId capturedValueReturnId = hirId(expectedFunction + 2 + 2 * slotCount);
+      const HirNodeId capturedValueFunctionRefId = hirId(expectedFunction + 3 + 2 * slotCount);
+      const HirNodeId capturedValueCallId = hirId(expectedFunction + 4 + 2 * slotCount);
+      zc::Vector<zc::Maybe<const HirLocalBinding&>> capturedLocalRecords;
+      zc::Vector<zc::Maybe<const HirScalarLiteralExpression&>> capturedLiteralRecords;
+      for (size_t position = 0; position < capturedCount; ++position) {
+        capturedLocalRecords.add(zc::none);
+        capturedLiteralRecords.add(zc::none);
+      }
+      zc::Vector<zc::Maybe<const HirLocalBinding&>> pointerSlotRecords;
+      zc::Vector<zc::Maybe<const HirLocalReferenceExpression&>> slotInitializerReferences;
+      for (size_t slot = 0; slot < pointerCount; ++slot) {
+        pointerSlotRecords.add(zc::none);
+        if (slot > 0) { slotInitializerReferences.add(zc::none); }
+      }
+      zc::Maybe<const HirClosureAddressExpression&> originAddress;
+      zc::Maybe<const HirLocalReferenceExpression&> functionReference;
+      zc::Maybe<const HirIndirectCallExpression&> valueCall;
+      zc::Maybe<const HirReturnStatement&> valueReturn;
+      for (const auto& candidateLocal : candidate.impl->locals) {
+        if (candidateLocal.node.ordinal() < expectedFunction ||
+            candidateLocal.node.ordinal() >= expectedFunction + capturedValueStride) {
+          continue;
+        }
+        bool recognized = false;
+        for (size_t position = 0; position < capturedCount; ++position) {
+          if (candidateLocal.node == hirId(expectedFunction + 2 + 2 * position)) {
+            if (capturedLocalRecords[position] != zc::none) { return rejectCapturedValueCall(); }
+            capturedLocalRecords[position] = candidateLocal;
+            recognized = true;
+          }
+        }
+        if (candidateLocal.node == hirId(expectedFunction + 2 + 2 * capturedCount)) {
+          if (pointerSlotRecords[0] != zc::none) { return rejectCapturedValueCall(); }
+          pointerSlotRecords[0] = candidateLocal;
+          recognized = true;
+        }
+        for (size_t copy = 0; copy < copyCount; ++copy) {
+          if (candidateLocal.node != hirId(expectedFunction + 4 + 2 * capturedCount + 2 * copy)) {
+            continue;
+          }
+          if (pointerSlotRecords[copy + 1] != zc::none) { return rejectCapturedValueCall(); }
+          pointerSlotRecords[copy + 1] = candidateLocal;
+          recognized = true;
+        }
+        if (!recognized) { return rejectCapturedValueCall(); }
+      }
+      for (const auto& candidateExpression : candidate.impl->expressions) {
+        if (candidateExpression.node.ordinal() < expectedFunction ||
+            candidateExpression.node.ordinal() >= expectedFunction + capturedValueStride) {
+          continue;
+        }
+        bool recognized = false;
+        for (size_t position = 0; position < capturedCount; ++position) {
+          if (candidateExpression.node != hirId(expectedFunction + 3 + 2 * position)) { continue; }
+          if (capturedLiteralRecords[position] != zc::none) { return rejectCapturedValueCall(); }
+          capturedLiteralRecords[position] = candidateExpression;
+          recognized = true;
+        }
+        if (!recognized) { return rejectCapturedValueCall(); }
+      }
+      for (const auto& candidateAddress : candidate.impl->closureAddresses) {
+        if (candidateAddress.node.ordinal() < expectedFunction ||
+            candidateAddress.node.ordinal() >= expectedFunction + capturedValueStride) {
+          continue;
+        }
+        if (originAddress != zc::none ||
+            candidateAddress.node != hirId(expectedFunction + 3 + 2 * capturedCount)) {
+          return rejectCapturedValueCall();
+        }
+        originAddress = candidateAddress;
+      }
+      for (const auto& candidateReference : candidate.impl->localReferences) {
+        if (candidateReference.node.ordinal() < expectedFunction ||
+            candidateReference.node.ordinal() >= expectedFunction + capturedValueStride) {
+          continue;
+        }
+        bool recognized = false;
+        for (size_t copy = 0; copy < copyCount; ++copy) {
+          if (candidateReference.node !=
+              hirId(expectedFunction + 5 + 2 * capturedCount + 2 * copy)) {
+            continue;
+          }
+          if (slotInitializerReferences[copy] != zc::none) { return rejectCapturedValueCall(); }
+          slotInitializerReferences[copy] = candidateReference;
+          recognized = true;
+        }
+        if (candidateReference.node == capturedValueFunctionRefId) {
+          if (functionReference != zc::none) { return rejectCapturedValueCall(); }
+          functionReference = candidateReference;
+          recognized = true;
+        }
+        if (!recognized) { return rejectCapturedValueCall(); }
+      }
+      for (const auto& candidateCall : candidate.impl->indirectCalls) {
+        if (candidateCall.node.ordinal() < expectedFunction ||
+            candidateCall.node.ordinal() >= expectedFunction + capturedValueStride) {
+          continue;
+        }
+        if (valueCall != zc::none || candidateCall.node != capturedValueCallId) {
+          return rejectCapturedValueCall();
+        }
+        valueCall = candidateCall;
+      }
+      for (const auto& candidateReturn : candidate.impl->returns) {
+        if (candidateReturn.node.ordinal() < expectedFunction ||
+            candidateReturn.node.ordinal() >= expectedFunction + capturedValueStride) {
+          continue;
+        }
+        if (valueReturn != zc::none || candidateReturn.node != capturedValueReturnId) {
+          return rejectCapturedValueCall();
+        }
+        valueReturn = candidateReturn;
+      }
+      bool recordsComplete = originAddress != zc::none && functionReference != zc::none &&
+                             valueCall != zc::none && valueReturn != zc::none;
+      for (size_t position = 0; position < capturedCount; ++position) {
+        if (capturedLocalRecords[position] == zc::none ||
+            capturedLiteralRecords[position] == zc::none) {
+          recordsComplete = false;
+        }
+      }
+      for (size_t slot = 0; slot < pointerCount; ++slot) {
+        if (pointerSlotRecords[slot] == zc::none) { recordsComplete = false; }
+        if (slot > 0 && slotInitializerReferences[slot - 1] == zc::none) {
+          recordsComplete = false;
+        }
+      }
+      if (!recordsComplete) { return rejectCapturedValueCallMissing(); }
+      const auto& address = ZC_ASSERT_NONNULL(originAddress);
+      const auto& pointerReference = ZC_ASSERT_NONNULL(functionReference);
+      const auto& call = ZC_ASSERT_NONNULL(valueCall);
+      const auto& returnStatementRecord = ZC_ASSERT_NONNULL(valueReturn);
+      if (function.node != hirId(expectedFunction) || block.node != hirId(expectedFunction + 1) ||
+          function.body != block.node || block.statements.size() != slotCount + 1 ||
+          function.receiver != zc::none || function.parameters.size() != 0 ||
+          function.unsafeBlock != zc::none) {
+        return rejectCapturedValueCall();
+      }
+      for (size_t position = 0; position < capturedCount; ++position) {
+        if (block.statements[position] != ZC_ASSERT_NONNULL(capturedLocalRecords[position]).node) {
+          return rejectCapturedValueCall();
+        }
+      }
+      if (block.statements[capturedCount] != ZC_ASSERT_NONNULL(pointerSlotRecords[0]).node) {
+        return rejectCapturedValueCall();
+      }
+      for (size_t copy = 0; copy < copyCount; ++copy) {
+        if (block.statements[capturedCount + 1 + copy] !=
+            ZC_ASSERT_NONNULL(pointerSlotRecords[copy + 1]).node) {
+          return rejectCapturedValueCall();
+        }
+      }
+      if (block.statements[slotCount] != returnStatementRecord.node) {
+        return rejectCapturedValueCall();
+      }
+      const identity::SemanticTypeId functionType = address.functionType;
+      if (!typeExists(functionType, semanticTypes)) { return rejectCapturedValueCall(); }
+      // Captured locals: local 1..N initialized from the matching literal
+      // expression.
+      for (size_t position = 0; position < capturedCount; ++position) {
+        const auto& localRecord = ZC_ASSERT_NONNULL(capturedLocalRecords[position]);
+        const auto& expression = ZC_ASSERT_NONNULL(capturedLiteralRecords[position]);
+        if (localRecord.local != hirLocalId(position + 1) ||
+            localRecord.initializer != expression.node || localRecord.type != expression.type ||
+            localRecord.initializerSpan == zc::none ||
+            expression.category != HirValueCategory::Value ||
+            !typeExists(localRecord.type, semanticTypes)) {
+          return rejectCapturedValueCall();
+        }
+      }
+      // Origin pointer slot local N+1 initialized from the closure address.
+      {
+        const auto& originBindingRecord = ZC_ASSERT_NONNULL(pointerSlotRecords[0]);
+        if (originBindingRecord.local != hirLocalId(capturedCount + 1) ||
+            originBindingRecord.initializer != hirId(expectedFunction + 3 + 2 * capturedCount) ||
+            originBindingRecord.type != functionType ||
+            originBindingRecord.initializerSpan == zc::none) {
+          return rejectCapturedValueCall();
+        }
+      }
+      // Copy pointer slots local N+2..N+K.
+      for (size_t copy = 0; copy < copyCount; ++copy) {
+        const auto& copyBindingRecord = ZC_ASSERT_NONNULL(pointerSlotRecords[copy + 1]);
+        const auto& initializerReference = ZC_ASSERT_NONNULL(slotInitializerReferences[copy]);
+        const HirNodeId copyBindingId = hirId(expectedFunction + 4 + 2 * capturedCount + 2 * copy);
+        const HirNodeId copyInitializerId =
+            hirId(expectedFunction + 5 + 2 * capturedCount + 2 * copy);
+        if (copyBindingRecord.node != copyBindingId ||
+            copyBindingRecord.local != hirLocalId(capturedCount + copy + 2) ||
+            copyBindingRecord.initializer != copyInitializerId ||
+            copyBindingRecord.type != functionType ||
+            copyBindingRecord.initializerSpan == zc::none ||
+            initializerReference.node != copyInitializerId ||
+            initializerReference.local != hirLocalId(capturedCount + copy + 1) ||
+            initializerReference.type != functionType ||
+            initializerReference.category != HirValueCategory::Place) {
+          return rejectCapturedValueCall();
+        }
+      }
+      if (pointerReference.node != capturedValueFunctionRefId ||
+          pointerReference.local != hirLocalId(slotCount) ||
+          pointerReference.type != functionType ||
+          pointerReference.category != HirValueCategory::Place) {
+        return rejectCapturedValueCall();
+      }
+      if (returnStatementRecord.node != capturedValueReturnId ||
+          returnStatementRecord.value != call.node ||
+          returnStatementRecord.resultType != function.resultType ||
+          call.node != capturedValueCallId || call.function != pointerReference.node ||
+          call.resultType != function.resultType || call.arguments.size() != capturedCount) {
+        return rejectCapturedValueCall();
+      }
+      for (const auto& callArgument : call.arguments) {
+        if (callArgument.value != zc::none || callArgument.parameter != zc::none ||
+            callArgument.field != zc::none || callArgument.comparisonOperation != zc::none) {
+          return rejectCapturedValueCall();
+        }
+      }
+
+      // Entry signature and definition reconciliation.
+      auto sourceDefinitionIndex = definitionIndex(definitions, function.definition);
+      auto signaturePosition = signatureIndex(signatures.definitions.asPtr(), function.definition);
+      auto rootPosition = signatureRootIndex(signatures.roots.asPtr(), function.definition);
+      if (sourceDefinitionIndex == zc::none || signaturePosition == zc::none ||
+          rootPosition == zc::none) {
+        return rejectCapturedValueCallMissing();
+      }
+      size_t definitionSlot = 0;
+      size_t signatureSlot = 0;
+      size_t rootSlot = 0;
+      ZC_IF_SOME(value, sourceDefinitionIndex) { definitionSlot = value; }
+      ZC_IF_SOME(value, signaturePosition) { signatureSlot = value; }
+      ZC_IF_SOME(value, rootPosition) { rootSlot = value; }
+      const auto& sourceDefinition = definitions.definitions()[definitionSlot];
+      const auto& entrySignature = signatures.definitions[signatureSlot];
+      const auto& entryRoot = signatures.roots[rootSlot];
+      const auto& sourceTree = bound.tree();
+      if (!hasExecutableBody(sourceDefinition, definitions) ||
+          !definitionBelongsToModule(sourceDefinition, definitions) ||
+          sourceDefinition.record.kind() != identity::DefinitionKind::Function ||
+          !sourceDefinition.site.value().is<binder::DeclarationDefinitionSite>() ||
+          !sourceTree.contains(sourceDefinition.node) ||
+          sourceTree.node(sourceDefinition.node).kind != ast::SyntaxKind::FunctionDecl ||
+          !entrySignature.payload.variant().is<checker::signature::CallableSignature>() ||
+          !entrySignature.scope.variant()
+               .is<checker::signature::ModuleDefinitionSignatureScope>()) {
+        return rejectCapturedValueCall();
+      }
+      const auto& entryCallable =
+          entrySignature.payload.variant().get<checker::signature::CallableSignature>();
+      auto expectedVisibility = visibility(entryRoot.visibility);
+      auto expectedLinkage = linkage(entryCallable);
+      if (expectedVisibility == zc::none || expectedLinkage == zc::none ||
+          entrySignature.definition != function.definition ||
+          entrySignature.definitionKind != identity::DefinitionKind::Function ||
+          entryRoot.canonicalDefinition != function.definition ||
+          entryRoot.sourceModule != module || entryCallable.receiver != zc::none ||
+          entryCallable.parameters.size() != 0 || entryCallable.success != function.resultType ||
+          !sameSpan(entrySignature.declarationSpan, sourceDefinition.source) ||
+          !sameSpan(function.sourceSpan, sourceDefinition.source) ||
+          !sameVisibility(function.visibility, ZC_ASSERT_NONNULL(expectedVisibility)) ||
+          function.linkage != ZC_ASSERT_NONNULL(expectedLinkage)) {
+        return rejectCapturedValueCall();
+      }
+      // The closure address must name the origin closure rail row.
+      auto sourceClosureDefId = definitions.closureDefinitionAt(source.closureAliasInitializer);
+      if (sourceClosureDefId == zc::none ||
+          ZC_ASSERT_NONNULL(sourceClosureDefId) != address.closure ||
+          call.callee != address.closure) {
+        return rejectCapturedValueCall();
+      }
+      // Source captured lets, origin, copies, and the zero-argument call.
+      for (const auto& capturedLocal : source.capturedLocals) {
+        if (!sourceTree.contains(capturedLocal.let) ||
+            sourceTree.node(capturedLocal.let).kind != ast::SyntaxKind::LetStmt ||
+            !sourceTree.contains(capturedLocal.pattern) ||
+            sourceTree.node(capturedLocal.pattern).kind != ast::SyntaxKind::IdentifierPattern ||
+            !sourceTree.contains(capturedLocal.initializer) ||
+            !isScalarLiteral(sourceTree.node(capturedLocal.initializer).kind)) {
+          return rejectCapturedValueCall();
+        }
+      }
+      if (!sourceTree.contains(source.closureAliasLet) ||
+          sourceTree.node(source.closureAliasLet).kind != ast::SyntaxKind::LetStmt ||
+          !sourceTree.contains(source.closureAliasPattern) ||
+          sourceTree.node(source.closureAliasPattern).kind != ast::SyntaxKind::IdentifierPattern ||
+          !sourceTree.contains(source.closureAliasInitializer) ||
+          sourceTree.node(source.closureAliasInitializer).kind !=
+              ast::SyntaxKind::FunctionExpression) {
+        return rejectCapturedValueCall();
+      }
+      zc::Vector<binder::OwnerLocalBindingId> sourceLeadingBindings;
+      for (const auto& capturedLocal : source.capturedLocals) {
+        auto capturedBinding =
+            ownerLocalBindingForPattern(definitions, capturedLocal.pattern, sourceTree);
+        if (capturedBinding == zc::none) { return rejectCapturedValueCall(); }
+        sourceLeadingBindings.add(ZC_ASSERT_NONNULL(capturedBinding));
+      }
+      zc::Vector<binder::OwnerLocalBindingId> sourceChain;
+      auto sourceOriginBinding =
+          ownerLocalBindingForPattern(definitions, source.closureAliasPattern, sourceTree);
+      if (sourceOriginBinding == zc::none) { return rejectCapturedValueCall(); }
+      sourceChain.add(ZC_ASSERT_NONNULL(sourceOriginBinding));
+      for (const auto& copy : source.closureValueCopies) {
+        if (!sourceTree.contains(copy.let) ||
+            sourceTree.node(copy.let).kind != ast::SyntaxKind::LetStmt ||
+            !sourceTree.contains(copy.pattern) ||
+            sourceTree.node(copy.pattern).kind != ast::SyntaxKind::IdentifierPattern ||
+            !sourceTree.contains(copy.initializer) ||
+            sourceTree.node(copy.initializer).kind != ast::SyntaxKind::IdentExpr) {
+          return rejectCapturedValueCall();
+        }
+        auto copyBinding = ownerLocalBindingForPattern(definitions, copy.pattern, sourceTree);
+        if (copyBinding == zc::none) { return rejectCapturedValueCall(); }
+        for (const auto existing : sourceChain) {
+          if (existing == ZC_ASSERT_NONNULL(copyBinding)) { return rejectCapturedValueCall(); }
+        }
+        auto copyInitializerBinding = resolvedOwnerLocal(bound.bindings(), copy.initializer);
+        if (copyInitializerBinding == zc::none ||
+            ZC_ASSERT_NONNULL(copyInitializerBinding) != sourceChain[sourceChain.size() - 1]) {
+          return rejectCapturedValueCall();
+        }
+        sourceChain.add(ZC_ASSERT_NONNULL(copyBinding));
+      }
+      const ast::NodeId sourceCallNode(source.value);
+      if (!sourceTree.contains(sourceCallNode) ||
+          sourceTree.node(sourceCallNode).kind != ast::SyntaxKind::CallExpression) {
+        return rejectCapturedValueCall();
+      }
+      const ast::NodeId sourceCalleeNode(
+          sourceTree.node(sourceCallNode).payload.words[ast::kCallExpressionCalleeWord]);
+      const ast::NodeList sourceTypeArguments{
+          sourceTree.node(sourceCallNode).payload.words[ast::kCallExpressionTypeArgsFirstWord],
+          sourceTree.node(sourceCallNode).payload.words[ast::kCallExpressionTypeArgsSizeWord]};
+      const ast::NodeList sourceArguments{
+          sourceTree.node(sourceCallNode).payload.words[ast::kCallExpressionArgsFirstWord],
+          sourceTree.node(sourceCallNode).payload.words[ast::kCallExpressionArgsSizeWord]};
+      if (!sourceTree.contains(sourceCalleeNode) ||
+          sourceTree.node(sourceCalleeNode).kind != ast::SyntaxKind::IdentExpr ||
+          !sourceTree.contains(sourceTypeArguments) || !sourceTypeArguments.empty() ||
+          !sourceTree.contains(sourceArguments) || !sourceArguments.empty()) {
+        return rejectCapturedValueCall();
+      }
+      {
+        auto calleeBinding = resolvedOwnerLocal(bound.bindings(), sourceCalleeNode);
+        if (calleeBinding == zc::none ||
+            ZC_ASSERT_NONNULL(calleeBinding) != sourceChain[sourceChain.size() - 1]) {
+          return rejectCapturedValueCall();
+        }
+      }
+      // Capture facts in canonical order name the leading locals one for one
+      // in declaration order.
+      const binder::MaterializedClosureDefinitionEntry* captureClosureRow = nullptr;
+      for (const auto& closure : definitions.closureDefinitions()) {
+        if (closure.node == source.closureAliasInitializer) {
+          captureClosureRow = &closure;
+          break;
+        }
+      }
+      if (captureClosureRow == nullptr) { return rejectCapturedValueCall(); }
+      auto orderedCaptureFacts =
+          sortedClosureCaptureFacts(facts.captures(), captureClosureRow->closureKey);
+      if (orderedCaptureFacts.size() != capturedCount) { return rejectCapturedValueCall(); }
+      for (size_t position = 0; position < capturedCount; ++position) {
+        const auto* captureFact = orderedCaptureFacts[position];
+        if (captureFact->mode != checker::checked::CaptureMode::Copy ||
+            captureFact->origin != checker::checked::CaptureOrigin::Inferred ||
+            captureFact->capturedType != function.resultType ||
+            !captureFact->target.value().is<binder::OwnerLocalBindingTarget>() ||
+            captureFact->target.value().get<binder::OwnerLocalBindingTarget>().binding !=
+                sourceLeadingBindings[position]) {
+          return rejectCapturedValueCall();
+        }
+      }
+      // Checker call and dispatch facts target the closure with zero source
+      // arguments.
+      auto checkedCallIndex = factIndex(facts.calls(), sourceCallNode);
+      auto callKey = checkedNodeKey(sourceTree, bound.parsedModule(), sourceCallNode);
+      auto calleeTypeIndex = factIndex(facts.nodeTypes(), sourceCalleeNode);
+      auto closureTypeIndex = factIndex(facts.nodeTypes(), source.closureAliasInitializer);
+      zc::Vector<size_t> sourceLiteralSlots;
+      zc::Vector<identity::SemanticTypeId> sourceCapturedTypes;
+      for (const auto& capturedLocal : source.capturedLocals) {
+        auto literalFactIndex = factIndex(facts.literals(), capturedLocal.initializer);
+        if (literalFactIndex == zc::none) { return rejectCapturedValueCallMissing(); }
+        size_t literalSlot = 0;
+        ZC_IF_SOME(value, literalFactIndex) { literalSlot = value; }
+        sourceLiteralSlots.add(literalSlot);
+        sourceCapturedTypes.add(facts.literals().entries()[literalSlot].value.type);
+      }
+      if (checkedCallIndex == zc::none || callKey == zc::none || calleeTypeIndex == zc::none ||
+          closureTypeIndex == zc::none) {
+        return rejectCapturedValueCallMissing();
+      }
+      size_t checkedCallSlot = 0;
+      size_t calleeTypeSlot = 0;
+      size_t closureTypeSlot = 0;
+      ZC_IF_SOME(value, checkedCallIndex) { checkedCallSlot = value; }
+      ZC_IF_SOME(value, calleeTypeIndex) { calleeTypeSlot = value; }
+      ZC_IF_SOME(value, closureTypeIndex) { closureTypeSlot = value; }
+      const auto& invocation = facts.calls().entries()[checkedCallSlot].value.invocation;
+      const auto& selected = invocation.selected.variant();
+      auto dispatchIndex = dispatchFactIndex(candidate.impl->checkedModule.dispatchFacts().facts(),
+                                             ZC_ASSERT_NONNULL(callKey));
+      if (dispatchIndex == zc::none) { return rejectCapturedValueCallMissing(); }
+      size_t dispatchSlot = 0;
+      ZC_IF_SOME(value, dispatchIndex) { dispatchSlot = value; }
+      const auto& dispatch = candidate.impl->checkedModule.dispatchFacts().facts()[dispatchSlot];
+      const auto& target = dispatch.fact.target.variant();
+      const auto& transform = dispatch.fact.resultTransform.variant();
+      const auto closureDefId = ZC_ASSERT_NONNULL(sourceClosureDefId);
+      if (!selected.is<checker::checked::DirectCallable>() ||
+          selected.get<checker::checked::DirectCallable>().callee != closureDefId ||
+          !target.is<checker::dispatch::DirectTarget>() ||
+          target.get<checker::dispatch::DirectTarget>().callee != closureDefId ||
+          !transform.is<checker::dispatch::IdentityResultTransform>() ||
+          invocation.calleeType != functionType ||
+          facts.nodeTypes().entries()[calleeTypeSlot].value != functionType ||
+          facts.nodeTypes().entries()[closureTypeSlot].value != functionType ||
+          invocation.successType != function.resultType ||
+          invocation.resultType != function.resultType || invocation.receiver != zc::none ||
+          invocation.receiverMode != zc::none || invocation.receiverAdjustment != zc::none ||
+          invocation.arguments.size() != 0 || invocation.substitutions != zc::none ||
+          invocation.witnesses != zc::none || invocation.raises != zc::none ||
+          dispatch.fact.receiver != zc::none || dispatch.fact.arguments.size() != 0 ||
+          dispatch.fact.successType != function.resultType ||
+          dispatch.fact.resultType != function.resultType ||
+          dispatch.fact.substitutions != zc::none || dispatch.fact.witnesses != zc::none ||
+          dispatch.fact.raises != zc::none) {
+        return rejectCapturedValueCall();
+      }
+      for (size_t position = 0; position < capturedCount; ++position) {
+        const auto& capturedLocal = source.capturedLocals[position];
+        const auto& localRecord = ZC_ASSERT_NONNULL(capturedLocalRecords[position]);
+        const auto& expression = ZC_ASSERT_NONNULL(capturedLiteralRecords[position]);
+        const auto& checkedLiteral = facts.literals().entries()[sourceLiteralSlots[position]].value;
+        auto initializerSpan =
+            bound.parsedModule().spanFor(sourceTree.node(capturedLocal.initializer).range);
+        auto localSpan = bound.parsedModule().spanFor(sourceTree.node(capturedLocal.pattern).range);
+        if (initializerSpan == zc::none || localSpan == zc::none) {
+          return rejectCapturedValueCallMissing();
+        }
+        if (checkedLiteral.node != capturedLocal.initializer ||
+            checkedLiteral.type != orderedCaptureFacts[position]->capturedType ||
+            checkedLiteral.type != expression.type || checkedLiteral.type != localRecord.type ||
+            checkedLiteral.type != sourceCapturedTypes[position] ||
+            !sameConstant(expression.value, checkedLiteral.literal, module, registries,
+                          semanticTypes) ||
+            !sameSpan(checkedLiteral.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan)) ||
+            !sameSpan(localRecord.sourceSpan, ZC_ASSERT_NONNULL(localSpan)) ||
+            !sameSpan(ZC_ASSERT_NONNULL(localRecord.initializerSpan),
+                      ZC_ASSERT_NONNULL(initializerSpan)) ||
+            call.arguments[position].value != zc::none ||
+            call.arguments[position].parameter != zc::none ||
+            call.arguments[position].field != zc::none ||
+            call.arguments[position].local != hirLocalId(position + 1) ||
+            call.arguments[position].type != localRecord.type ||
+            !sameSpan(call.arguments[position].sourceSpan, ZC_ASSERT_NONNULL(localSpan))) {
+          return rejectCapturedValueCall();
+        }
+      }
+      // Span fidelity for chain, call, and closure records.
+      auto closureSpan =
+          bound.parsedModule().spanFor(sourceTree.node(source.closureAliasInitializer).range);
+      auto originPatternSpan =
+          bound.parsedModule().spanFor(sourceTree.node(source.closureAliasPattern).range);
+      auto callSpan = bound.parsedModule().spanFor(sourceTree.node(sourceCallNode).range);
+      auto calleeSpan = bound.parsedModule().spanFor(sourceTree.node(sourceCalleeNode).range);
+      auto returnSpan = bound.parsedModule().spanFor(sourceTree.node(source.returnStatement).range);
+      if (closureSpan == zc::none || originPatternSpan == zc::none || callSpan == zc::none ||
+          calleeSpan == zc::none || returnSpan == zc::none) {
+        return rejectCapturedValueCallMissing();
+      }
+      if (!sameSpan(address.sourceSpan, ZC_ASSERT_NONNULL(closureSpan)) ||
+          !sameSpan(call.sourceSpan, ZC_ASSERT_NONNULL(callSpan)) ||
+          !sameSpan(pointerReference.sourceSpan, ZC_ASSERT_NONNULL(calleeSpan)) ||
+          !sameSpan(returnStatementRecord.sourceSpan, ZC_ASSERT_NONNULL(returnSpan)) ||
+          !sameSpan(ZC_ASSERT_NONNULL(pointerSlotRecords[0]).sourceSpan,
+                    ZC_ASSERT_NONNULL(originPatternSpan)) ||
+          !sameSpan(ZC_ASSERT_NONNULL(ZC_ASSERT_NONNULL(pointerSlotRecords[0]).initializerSpan),
+                    ZC_ASSERT_NONNULL(closureSpan))) {
+        return rejectCapturedValueCall();
+      }
+      for (size_t copy = 0; copy < copyCount; ++copy) {
+        const auto& copyShape = source.closureValueCopies[copy];
+        const auto& copyBindingRecord = ZC_ASSERT_NONNULL(pointerSlotRecords[copy + 1]);
+        const auto& initializerReference = ZC_ASSERT_NONNULL(slotInitializerReferences[copy]);
+        auto patternSpan = bound.parsedModule().spanFor(sourceTree.node(copyShape.pattern).range);
+        auto initializerSpan =
+            bound.parsedModule().spanFor(sourceTree.node(copyShape.initializer).range);
+        if (patternSpan == zc::none || initializerSpan == zc::none) {
+          return rejectCapturedValueCallMissing();
+        }
+        if (!sameSpan(copyBindingRecord.sourceSpan, ZC_ASSERT_NONNULL(patternSpan)) ||
+            !sameSpan(ZC_ASSERT_NONNULL(copyBindingRecord.initializerSpan),
+                      ZC_ASSERT_NONNULL(initializerSpan)) ||
+            !sameSpan(initializerReference.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan))) {
+          return rejectCapturedValueCall();
+        }
+      }
+      nextFunction += static_cast<uint32_t>(capturedValueStride);
+      continue;
+    }
     // RFC 0058 B1/B2 capturing-closure-alias caller: one or two leading
     // `let x: T = <literal>;` locals, a slotless `let f = fn() -> T { .. };`
     // closure alias, and a trailing zero-source-argument `return f();`. For N
