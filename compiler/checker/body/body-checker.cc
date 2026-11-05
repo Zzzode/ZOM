@@ -5520,9 +5520,14 @@ zc::Maybe<zc::Vector<AdmittedScalarCapture>> admittedScalarCaptureSet(
     return false;
   };
   // Collect the body leaves: one identifier (zero-parameter closures only), or
-  // two identifiers of an integer arithmetic binary.
+  // the operands of an integer arithmetic binary. A binary operand is either an
+  // identifier leaf (a capture or the declared parameter) or an integer literal
+  // operand. The capture-plus-literal form is one identifier capture plus one
+  // integer literal; identifier operands are gathered in leafNodes and literal
+  // operands are counted in literalOperandCount.
   zc::Vector<ast::NodeId> leafNodes;
   bool bodyIsBinary = false;
+  size_t literalOperandCount = 0;
   if (tree.node(valueNode).kind == ast::SyntaxKind::IdentExpr) {
     if (signatureParameterCount != 0) { return zc::none; }
     leafNodes.add(valueNode);
@@ -5530,13 +5535,17 @@ zc::Maybe<zc::Vector<AdmittedScalarCapture>> admittedScalarCaptureSet(
              isIntegerArithmeticBinarySyntax(tree, valueNode)) {
     const ast::NodeId left(tree.node(valueNode).payload.words[ast::kBinaryExprLhsWord]);
     const ast::NodeId right(tree.node(valueNode).payload.words[ast::kBinaryExprRhsWord]);
-    if (!tree.contains(left) || tree.node(left).kind != ast::SyntaxKind::IdentExpr ||
-        !tree.contains(right) || tree.node(right).kind != ast::SyntaxKind::IdentExpr) {
-      return zc::none;
-    }
-    leafNodes.add(left);
-    leafNodes.add(right);
     bodyIsBinary = true;
+    for (const ast::NodeId operand : {left, right}) {
+      if (!tree.contains(operand)) { return zc::none; }
+      if (tree.node(operand).kind == ast::SyntaxKind::IdentExpr) {
+        leafNodes.add(operand);
+      } else if (tree.node(operand).kind == ast::SyntaxKind::IntLiteral) {
+        ++literalOperandCount;
+      } else {
+        return zc::none;
+      }
+    }
   } else {
     return zc::none;
   }
@@ -5564,9 +5573,22 @@ zc::Maybe<zc::Vector<AdmittedScalarCapture>> admittedScalarCaptureSet(
     if (!duplicate) { captured.add(zc::mv(ZC_ASSERT_NONNULL(one))); }
   }
   if (signatureParameterCount == 0) {
-    if (parameterLeafCount != 0 || captured.size() < 1 || captured.size() > 2) { return zc::none; }
+    if (parameterLeafCount != 0) { return zc::none; }
+    if (literalOperandCount == 0) {
+      // Identifier-only body: either one captured identifier or two captures of
+      // an arithmetic binary.
+      if (captured.size() < 1 || captured.size() > 2) { return zc::none; }
+    } else {
+      // Capture-plus-literal arithmetic: exactly one identifier capture and one
+      // integer literal operand.
+      if (literalOperandCount != 1 || leafNodes.size() != 1 || captured.size() != 1) {
+        return zc::none;
+      }
+    }
   } else {
-    if (parameterLeafCount != 1 || captured.size() != 1) { return zc::none; }
+    if (literalOperandCount != 0 || parameterLeafCount != 1 || captured.size() != 1) {
+      return zc::none;
+    }
   }
   // The capture requirement inventory for this closure must name exactly the
   // classified bindings (one key+target-deduped row per capture).
