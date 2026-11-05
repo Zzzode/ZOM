@@ -1,0 +1,12 @@
+// RFC 0057 slice 1b: a non-capturing closure value reached through a
+// whole-local copy chain. The origin local holds the closure address, the
+// copy local holds the same pointer, and the trailing call invokes the
+// closure through the final slot with one explicit i32 argument. The program
+// exits 42 natively through the indirect-call ABI.
+fn entry() -> i32 {
+  let f = fn(n: i32) -> i32 {
+    return n;
+  };
+  let g = f;
+  return g(42);
+}

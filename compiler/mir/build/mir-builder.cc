@@ -44,6 +44,16 @@ zc::Maybe<const hir::HirDirectCallExpression&> callFor(const hir::VerifiedHirMod
   return uniqueRecordFor(module.calls(), node);
 }
 
+zc::Maybe<const hir::HirClosureAddressExpression&> closureAddressFor(
+    const hir::VerifiedHirModule& module, hir::HirNodeId node) {
+  return uniqueRecordFor(module.closureAddresses(), node);
+}
+
+zc::Maybe<const hir::HirIndirectCallExpression&> indirectCallFor(
+    const hir::VerifiedHirModule& module, hir::HirNodeId node) {
+  return uniqueRecordFor(module.indirectCalls(), node);
+}
+
 zc::Maybe<const hir::HirParameterReferenceExpression&> parameterReferenceFor(
     const hir::VerifiedHirModule& module, hir::HirNodeId node) {
   return uniqueRecordFor(module.parameterReferences(), node);
@@ -3556,6 +3566,158 @@ zc::Maybe<RecursiveFunctionProduct> buildScalarLocalCallReturn(const LoweringCon
   return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
 }
 
+/// \brief Lowers a closure-value copy-chain caller:
+/// `fn entry() -> i32 { let f = fn(n: i32) -> i32 { return n; }; let g = f;
+/// return g(42); }`. Dense locals 1..K hold the pointer chain (the origin is a
+/// Temporary initialized from a FunctionAddress rvalue, each later slot is a
+/// UserLocal initialized from a whole-local copy of the previous slot) and
+/// local K+1 is the FunctionResult. Block 1 materializes the chain and invokes
+/// the closure through the final slot with CodePointerCall; block 2 returns
+/// the result. The shape matches the proven lowerCodePointerCallModule contract.
+zc::Maybe<RecursiveFunctionProduct> buildClosureValueCallReturn(const LoweringContext& lctx) {
+  const auto& declaration = lctx.declaration;
+  const auto& block = lctx.block;
+  const auto& hirModule = lctx.hirModule;
+  const auto& identities = lctx.identities;
+  auto& proofs = lctx.proofs;
+  auto copyMarker = lctx.copyMarker;
+
+  if (declaration.receiver != zc::none || declaration.unsafeBlock != zc::none ||
+      declaration.parameters.size() != 0 || block.statements.size() < 3) {
+    return zc::none;
+  }
+  const size_t slotCount = block.statements.size() - 1;
+  auto sourceReturn = returnFor(hirModule, block.statements[slotCount]);
+  if (sourceReturn == zc::none) { return zc::none; }
+  // Resolve and validate the chain slots.
+  zc::Vector<const hir::HirLocalBinding*> bindings;
+  const hir::HirClosureAddressExpression* originAddress = nullptr;
+  identity::SemanticTypeId functionType{};
+  for (size_t slot = 0; slot < slotCount; ++slot) {
+    auto sourceLocal = localFor(hirModule, block.statements[slot]);
+    if (sourceLocal == zc::none) { return zc::none; }
+    const auto* binding = &ZC_ASSERT_NONNULL(sourceLocal);
+    if (binding->local.ordinal() != slot + 1 || binding->initializer == zc::none) {
+      return zc::none;
+    }
+    hir::HirNodeId initializerNode;
+    ZC_IF_SOME(initializer, binding->initializer) { initializerNode = initializer; }
+    if (slot == 0) {
+      auto address = closureAddressFor(hirModule, initializerNode);
+      if (address == zc::none) { return zc::none; }
+      originAddress = &ZC_ASSERT_NONNULL(address);
+      functionType = originAddress->functionType;
+      if (binding->type != functionType || originAddress->functionType != binding->type) {
+        return zc::none;
+      }
+    } else {
+      auto reference = localReferenceFor(hirModule, initializerNode);
+      if (reference == zc::none) { return zc::none; }
+      const auto& ref = ZC_ASSERT_NONNULL(reference);
+      if (ref.local.ordinal() != slot || ref.type != binding->type ||
+          ref.category != hir::HirValueCategory::Place || binding->type != functionType) {
+        return zc::none;
+      }
+    }
+    bindings.add(binding);
+  }
+  if (originAddress == nullptr) { return zc::none; }
+  auto call = indirectCallFor(hirModule, ZC_ASSERT_NONNULL(sourceReturn).value);
+  if (call == zc::none) { return zc::none; }
+  const auto& sourceCall = ZC_ASSERT_NONNULL(call);
+  if (sourceCall.resultType != declaration.resultType) { return zc::none; }
+  if (sourceCall.callee != originAddress->closure) { return zc::none; }
+  auto functionReference = localReferenceFor(hirModule, sourceCall.function);
+  if (functionReference == zc::none) { return zc::none; }
+  if (ZC_ASSERT_NONNULL(functionReference).local.ordinal() != slotCount ||
+      ZC_ASSERT_NONNULL(functionReference).type != functionType ||
+      ZC_ASSERT_NONNULL(functionReference).category != hir::HirValueCategory::Place) {
+    return zc::none;
+  }
+  zc::Vector<MirOperand> arguments;
+  for (const auto& argument : sourceCall.arguments) {
+    if (argument.value == zc::none || argument.parameter != zc::none ||
+        argument.local != zc::none || argument.field != zc::none ||
+        argument.comparisonOperation != zc::none) {
+      return zc::none;
+    }
+    arguments.add(MirOperand::constant(argument.type, ZC_ASSERT_NONNULL(argument.value).clone()));
+  }
+  auto definition = identities.definition(declaration.definition);
+  if (definition == zc::none) { return zc::none; }
+
+  detail::MirFnCtx ctx;
+  const MirSourceScopeId scope = ctx.pushRootScope(declaration.sourceSpan.clone());
+  zc::Vector<MirLocalId> chainLocals;
+  for (size_t slot = 0; slot < slotCount; ++slot) {
+    const auto kind = slot == 0 ? MirLocalKind::Temporary : MirLocalKind::UserLocal;
+    const MirLocalId chainLocal =
+        ctx.declareLocal(kind, functionType, scope, bindings[slot]->sourceSpan.clone());
+    if (chainLocal.ordinal() != slot + 1) { return zc::none; }
+    chainLocals.add(chainLocal);
+  }
+  const MirLocalId resultLocal =
+      ctx.declareLocal(MirLocalKind::FunctionResult, declaration.resultType, scope,
+                       ZC_ASSERT_NONNULL(sourceReturn).sourceSpan.clone());
+  if (resultLocal.ordinal() != slotCount + 1) { return zc::none; }
+
+  // Block 1: materialize the pointer chain, then call through the final slot.
+  (void)ctx.beginBlock(scope);
+  for (size_t slot = 0; slot < slotCount; ++slot) {
+    ctx.appendStatement(
+        MirStatement::storageLive(chainLocals[slot], bindings[slot]->sourceSpan.clone()));
+    zc::Vector<MirProjection> destinationProjections;
+    MirPlace destination(chainLocals[slot], functionType, zc::mv(destinationProjections),
+                         functionType);
+    if (slot == 0) {
+      ctx.appendStatement(MirStatement::assign(
+          zc::mv(destination), MirRvalue::functionAddress(originAddress->closure, functionType),
+          MirInitializationKind::Initialize, originAddress->sourceSpan.clone()));
+    } else {
+      zc::Vector<MirProjection> sourceProjections;
+      auto source = placeUse(
+          proofs, copyMarker,
+          MirPlace(chainLocals[slot - 1], functionType, zc::mv(sourceProjections), functionType));
+      if (source == zc::none) { return zc::none; }
+      const identity::SourceSpan& copySpan = ZC_ASSERT_NONNULL(bindings[slot]->initializerSpan);
+      ctx.appendStatement(MirStatement::assign(
+          zc::mv(destination), MirRvalue::use(zc::mv(ZC_ASSERT_NONNULL(source))),
+          MirInitializationKind::Initialize, copySpan.clone()));
+    }
+  }
+  ctx.appendStatement(
+      MirStatement::storageLive(resultLocal, ZC_ASSERT_NONNULL(sourceReturn).sourceSpan.clone()));
+  zc::Vector<MirProjection> pointerProjections;
+  auto pointer = placeUse(
+      proofs, copyMarker,
+      MirPlace(chainLocals[slotCount - 1], functionType, zc::mv(pointerProjections), functionType));
+  if (pointer == zc::none) { return zc::none; }
+  zc::Maybe<MirBlockId> noUnwind;
+  zc::Vector<MirProjection> resultProjections;
+  ctx.terminateBlock(MirTerminator::codePointerCall(
+      zc::mv(ZC_ASSERT_NONNULL(pointer)), zc::mv(arguments), MirCallEffect::noActivation(),
+      MirPlace(resultLocal, declaration.resultType, zc::mv(resultProjections),
+               declaration.resultType),
+      ctx.peekBlockIdAt(0), zc::mv(noUnwind), sourceCall.sourceSpan.clone()));
+
+  // Block 2: return the function result.
+  (void)ctx.beginBlock(scope);
+  zc::Vector<MirProjection> returnProjections;
+  auto returnOperand = placeUse(proofs, copyMarker,
+                                MirPlace(resultLocal, declaration.resultType,
+                                         zc::mv(returnProjections), declaration.resultType));
+  if (returnOperand == zc::none) { return zc::none; }
+  ctx.terminateBlock(
+      MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
+                                 ZC_ASSERT_NONNULL(sourceReturn).sourceSpan.clone()));
+
+  MirFunction function = ctx.finish(declaration.definition, MirFunctionKind::Function,
+                                    identity::DefinitionKind::Function, declaration.resultType,
+                                    declaration.sourceSpan.clone());
+  zc::Array<uint8_t> ownerKey = ZC_ASSERT_NONNULL(definition).key().encode();
+  return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
+}
+
 /// \brief Lowers an existential-call caller:
 /// `fn entry() -> T { let a: dyn I = makeExistential(); return f(a); }`. One
 /// UserLocal of existential type at localId(1) is initialized by a zero-argument
@@ -5823,6 +5985,15 @@ zc::Maybe<RecursiveFunctionProduct> strategyDirectExistentialCall(const Lowering
   if (!lctx.hasTrailingReturn) return zc::none;
   if (lctx.statementCount != 2 || lctx.hasReceiver || lctx.hasUnsafeBlock) return zc::none;
   return buildDirectExistentialCallReturn(lctx);
+}
+
+/// Closure-value copy-chain caller: a closure-address origin local, one or
+/// more whole-local pointer copies, and a trailing indirect call through the
+/// final slot.
+zc::Maybe<RecursiveFunctionProduct> strategyClosureValueCall(const LoweringContext& lctx) {
+  if (!lctx.hasTrailingReturn) return zc::none;
+  if (lctx.statementCount < 3 || lctx.hasReceiver || lctx.hasUnsafeBlock) return zc::none;
+  return buildClosureValueCallReturn(lctx);
 }
 
 /// Scalar-local direct-call caller: one or two leading literal-initialized
@@ -8096,6 +8267,7 @@ static constexpr StrategyEntry kStrategyTable[] = {
     {"ByValueAggregateCall", strategyByValueAggregateCall},
     {"ErasedAggregateCall", strategyErasedAggregateCall},
     {"DirectExistentialCall", strategyDirectExistentialCall},
+    {"ClosureValueCall", strategyClosureValueCall},
     {"ScalarLocalCall", strategyScalarLocalCall},
     {"ErrorUnwrapCallReturn", strategyErrorUnwrapCallReturn},
     {"DirectCallInitializerReturn", strategyDirectCallInitializerReturn},

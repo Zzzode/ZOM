@@ -27,6 +27,8 @@ struct HirModuleCandidate::Impl final {
        zc::Vector<HirParameterReborrowExpression>&& parameterReborrows,
        zc::Vector<HirLocalBorrowExpression>&& localBorrows,
        zc::Vector<HirDirectCallExpression>&& calls,
+       zc::Vector<HirClosureAddressExpression>&& closureAddresses,
+       zc::Vector<HirIndirectCallExpression>&& indirectCalls,
        zc::Vector<HirReceiverCallExpression>&& receiverCalls,
        zc::Vector<HirUnsafeBlockExpression>&& unsafeBlocks,
        zc::Vector<HirPrimitiveBinaryExpression>&& primitiveBinaryOperations,
@@ -53,6 +55,8 @@ struct HirModuleCandidate::Impl final {
         parameterReborrows(zc::mv(parameterReborrows)),
         localBorrows(zc::mv(localBorrows)),
         calls(zc::mv(calls)),
+        closureAddresses(zc::mv(closureAddresses)),
+        indirectCalls(zc::mv(indirectCalls)),
         receiverCalls(zc::mv(receiverCalls)),
         unsafeBlocks(zc::mv(unsafeBlocks)),
         primitiveBinaryOperations(zc::mv(primitiveBinaryOperations)),
@@ -81,6 +85,8 @@ struct HirModuleCandidate::Impl final {
   zc::Vector<HirParameterReborrowExpression> parameterReborrows;
   zc::Vector<HirLocalBorrowExpression> localBorrows;
   zc::Vector<HirDirectCallExpression> calls;
+  zc::Vector<HirClosureAddressExpression> closureAddresses;
+  zc::Vector<HirIndirectCallExpression> indirectCalls;
   zc::Vector<HirReceiverCallExpression> receiverCalls;
   zc::Vector<HirUnsafeBlockExpression> unsafeBlocks;
   zc::Vector<HirPrimitiveBinaryExpression> primitiveBinaryOperations;

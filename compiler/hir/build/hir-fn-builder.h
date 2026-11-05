@@ -43,6 +43,8 @@ public:
            zc::Vector<HirParameterReborrowExpression>& parameterReborrows,
            zc::Vector<HirLocalBorrowExpression>& localBorrows,
            zc::Vector<HirDirectCallExpression>& calls,
+           zc::Vector<HirClosureAddressExpression>& closureAddresses,
+           zc::Vector<HirIndirectCallExpression>& indirectCalls,
            zc::Vector<HirReceiverCallExpression>& receiverCalls,
            zc::Vector<HirConditionalExpression>& conditionals, zc::Vector<HirLoopStatement>& loops,
            zc::Vector<HirConditionalLocalWriteStatement>& conditionalLocalWrites,
@@ -71,6 +73,8 @@ public:
   void addParameterReborrow(HirParameterReborrowExpression reborrow);
   void addLocalBorrow(HirLocalBorrowExpression borrow);
   void addDirectCall(HirDirectCallExpression call);
+  void addClosureAddress(HirClosureAddressExpression closureAddress);
+  void addIndirectCall(HirIndirectCallExpression call);
   void addReceiverCall(HirReceiverCallExpression call);
   void addConditional(HirConditionalExpression conditional);
   void addLoop(HirLoopStatement loop);
@@ -121,6 +125,8 @@ private:
   zc::Vector<HirParameterReborrowExpression>* parameterReborrows;
   zc::Vector<HirLocalBorrowExpression>* localBorrows;
   zc::Vector<HirDirectCallExpression>* calls;
+  zc::Vector<HirClosureAddressExpression>* closureAddresses;
+  zc::Vector<HirIndirectCallExpression>* indirectCalls;
   zc::Vector<HirReceiverCallExpression>* receiverCalls;
   zc::Vector<HirConditionalExpression>* conditionals;
   zc::Vector<HirLoopStatement>* loops;

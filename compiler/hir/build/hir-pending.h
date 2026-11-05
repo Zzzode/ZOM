@@ -1012,6 +1012,25 @@ struct DirectCallReturn {
   HirDirectCallExpression call;
 };
 
+/// RFC 0057 slice 1b closure-value caller: a leading `let f = fn(..) { .. };`
+/// origin whose initializer is the closure address, one or more whole-local
+/// identifier copies (`let g = f;`), and a returned indirect call through the
+/// final slot (`return g(args);`). The origin binding initializes from
+/// `closureAddress`; each alias binding initializes from a local reference to
+/// the previous slot; the indirect call's function names a local reference to
+/// the final slot. Node ids are placeholders allocated by the lowerer.
+struct ClosureValueCallReturn {
+  HirLocalBinding originBinding;
+  HirClosureAddressExpression closureAddress;
+  struct AliasLocal final {
+    HirLocalBinding binding;
+    HirLocalReferenceExpression initializerReference;
+  };
+  zc::Vector<AliasLocal> aliases;
+  HirLocalReferenceExpression functionReference;
+  HirIndirectCallExpression call;
+};
+
 struct ErrorPropagateCallReturn {
   HirDirectCallExpression call;
 };
@@ -1179,11 +1198,11 @@ using PendingFunctionShape = zc::OneOf<
     AggregateReturn, EnumConstructionReturn, ExistentialReturn, AggregateFieldProjectionReturn,
     LocalFieldBinaryReturn, DirectScalarLocalCallReturn, CapturingClosureAliasCallReturn,
     DirectAggregateCallReturn, DirectExistentialCallReturn, DirectCallReturn,
-    ErrorPropagateCallReturn, ErrorUnwrapCallReturn, DirectCallInitializerReturn,
-    ReceiverCallReturn, ParameterReceiverCallReturn, ReceiverSelfCallReturn, DiscardedReceiverCall,
-    DynFieldAccessReturn, ReceiverFieldReturn, ByValueParameterFieldReturn,
-    ReceiverFieldWriteReturn, ReceiverFieldArithmeticReturn, ConditionalReturn,
-    ChainedConditionalReturn, LeadingLocalConditionalReturn, LoopBodyReturn,
+    ClosureValueCallReturn, ErrorPropagateCallReturn, ErrorUnwrapCallReturn,
+    DirectCallInitializerReturn, ReceiverCallReturn, ParameterReceiverCallReturn,
+    ReceiverSelfCallReturn, DiscardedReceiverCall, DynFieldAccessReturn, ReceiverFieldReturn,
+    ByValueParameterFieldReturn, ReceiverFieldWriteReturn, ReceiverFieldArithmeticReturn,
+    ConditionalReturn, ChainedConditionalReturn, LeadingLocalConditionalReturn, LoopBodyReturn,
     ComparisonLoopBodyReturn, ConditionalLocalWriteReturn, ComparisonReturn, PrimitiveUnaryReturn,
     PrimitiveBinaryReturn, ForLoopReturn, ForLoopAccumulatorReturn, ForInLoopAccumulatorReturn,
     NestedForLoopAccumulatorReturn, SequentialLocalReturn, GenericShape>;

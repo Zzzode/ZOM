@@ -347,6 +347,37 @@ struct HirDirectCallExpression final {
   identity::SourceSpan sourceSpan;
 };
 
+/// \brief One verified materialization of a non-capturing closure's address.
+///
+/// The initializer of the origin local in a closure-value copy chain
+/// (`let f = fn(..) { .. };`). The closure is a bare code pointer with no
+/// hidden environment parameter, so the local's carrier is an opaque pointer.
+/// `functionType` is the closure's structural function type; MIR lowers the
+/// record to a FunctionAddress rvalue naming the anonymous closure definition.
+struct HirClosureAddressExpression final {
+  HirNodeId node;
+  identity::DefId closure;
+  identity::SemanticTypeId functionType;
+  identity::SourceSpan sourceSpan;
+};
+
+/// \brief One verified call through a stored closure-value pointer.
+///
+/// The return value of a closure-value caller (`let f = fn(..) { .. }; let g =
+/// f; return g(42);`). `function` names the pooled pointer operand: a local
+/// reference to the final slot of a bounded whole-local copy chain whose
+/// origin is a HirClosureAddressExpression. `callee` names the same closure
+/// definition the checker call fact targets, retained for independent
+/// verification; MIR lowers the record to a CodePointerCall terminator.
+struct HirIndirectCallExpression final {
+  HirNodeId node;
+  HirNodeId function;
+  identity::DefId callee;
+  identity::SemanticTypeId resultType;
+  zc::Vector<HirDirectCallArgument> arguments;
+  identity::SourceSpan sourceSpan;
+};
+
 /// \brief One checked receiver-call expression retained before ownership lowering.
 ///
 /// The receiver node is evaluated before every explicit argument. Mutable receiver
@@ -643,6 +674,8 @@ public:
       const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirLocalBorrowExpression> localBorrows() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirDirectCallExpression> calls() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const HirClosureAddressExpression> closureAddresses() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const HirIndirectCallExpression> indirectCalls() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirReceiverCallExpression> receiverCalls() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirUnsafeBlockExpression> unsafeBlocks() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirPrimitiveBinaryExpression> primitiveBinaryOperations()

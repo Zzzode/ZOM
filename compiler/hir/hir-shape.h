@@ -308,6 +308,20 @@ struct FunctionReturnShape final {
   ast::NodeId closureAliasLet{};
   ast::NodeId closureAliasPattern{};
   ast::NodeId closureAliasInitializer{};
+  // Closure-value copy-chain call shape: a leading `let f = fn(..) { .. };`
+  // origin for a zero-capture closure, one or more identifier-copy lets
+  // (`let g = f;`), and a trailing `return g(args);` through the final slot.
+  // The origin reuses closureAliasLet/closureAliasPattern/closureAliasInitializer;
+  // each entry here is one middle copy statement, in source order. Unlike the
+  // slotless alias, every chain statement materializes a HIR local, so the
+  // lowered call goes through the closure-address/indirect-call value path.
+  bool returnsClosureValueCall = false;
+  struct ClosureValueCopy final {
+    ast::NodeId let{};
+    ast::NodeId pattern{};
+    ast::NodeId initializer{};
+  };
+  zc::Vector<ClosureValueCopy> closureValueCopies;
   // RFC 0058 B1/B2 capturing-closure-alias shape: one or two leading
   // scalar-literal-initialized lets, a slotless `let f = fn() -> T { .. };`
   // alias for the closure, and a trailing zero-source-argument `return f();`:

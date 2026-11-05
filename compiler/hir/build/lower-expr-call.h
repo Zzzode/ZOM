@@ -17,6 +17,17 @@ namespace detail {
 /// or parameter key in the pending call record.
 void lowerDirectCallReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
 
+/// \brief Lowers one closure-value copy-chain caller through the recursive
+/// driver: `let f = fn(..) { .. }; let g = f; ...; return g(args);`. For a
+/// chain of K slots (one origin plus K-1 copies) the fixed source-preorder
+/// stride is function F, body F+1, then per slot one binding and one
+/// initializer node (F+2+2i / F+3+2i), then return F+2+2K, the indirect call's
+/// pointer local reference F+3+2K, and the indirect call F+4+2K. The origin
+/// initializer is the closure address; each later slot initializes from a
+/// reference to the previous slot. The indirect call through the final slot is
+/// the return value.
+void lowerClosureValueCallReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
+
 /// \brief Lowers one direct-call local initializer through the recursive driver:
 /// `let value = callee(<args>); return value;`. Node stride: function, body,
 /// local, call initializer, return, local reference. The call lowers into the

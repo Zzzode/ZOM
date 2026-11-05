@@ -27,6 +27,8 @@ HirFnCtx::HirFnCtx(uint32_t& nextNode, zc::Vector<HirFunctionDeclaration>& funct
                    zc::Vector<HirParameterReborrowExpression>& parameterReborrows,
                    zc::Vector<HirLocalBorrowExpression>& localBorrows,
                    zc::Vector<HirDirectCallExpression>& calls,
+                   zc::Vector<HirClosureAddressExpression>& closureAddresses,
+                   zc::Vector<HirIndirectCallExpression>& indirectCalls,
                    zc::Vector<HirReceiverCallExpression>& receiverCalls,
                    zc::Vector<HirConditionalExpression>& conditionals,
                    zc::Vector<HirLoopStatement>& loops,
@@ -51,6 +53,8 @@ HirFnCtx::HirFnCtx(uint32_t& nextNode, zc::Vector<HirFunctionDeclaration>& funct
       parameterReborrows(&parameterReborrows),
       localBorrows(&localBorrows),
       calls(&calls),
+      closureAddresses(&closureAddresses),
+      indirectCalls(&indirectCalls),
       receiverCalls(&receiverCalls),
       conditionals(&conditionals),
       loops(&loops),
@@ -123,6 +127,12 @@ void HirFnCtx::addLocalBorrow(HirLocalBorrowExpression borrow) {
 }
 
 void HirFnCtx::addDirectCall(HirDirectCallExpression call) { calls->add(zc::mv(call)); }
+
+void HirFnCtx::addClosureAddress(HirClosureAddressExpression closureAddress) {
+  closureAddresses->add(zc::mv(closureAddress));
+}
+
+void HirFnCtx::addIndirectCall(HirIndirectCallExpression call) { indirectCalls->add(zc::mv(call)); }
 
 void HirFnCtx::addReceiverCall(HirReceiverCallExpression call) { receiverCalls->add(zc::mv(call)); }
 

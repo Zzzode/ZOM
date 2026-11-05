@@ -1353,6 +1353,17 @@ zc::Maybe<const hir::HirDirectCallExpression&> callFor(const hir::VerifiedHirMod
   return result;
 }
 
+zc::Maybe<const hir::HirIndirectCallExpression&> indirectCallFor(
+    const hir::VerifiedHirModule& module, hir::HirNodeId node) {
+  zc::Maybe<const hir::HirIndirectCallExpression&> result;
+  for (const auto& call : module.indirectCalls()) {
+    if (call.node != node) continue;
+    if (result != zc::none) return zc::none;
+    result = call;
+  }
+  return result;
+}
+
 zc::Maybe<const hir::HirReceiverCallExpression&> receiverCallFor(
     const hir::VerifiedHirModule& module, hir::HirNodeId node) {
   zc::Maybe<const hir::HirReceiverCallExpression&> result;
@@ -1579,14 +1590,19 @@ bool isSequentialLocalReturnBlock(const hir::VerifiedHirModule& module,
   // RFC 0058 B2 two-local capturing-caller shape (the call value node is
   // counted on the checksum's right and each by-value local argument is
   // credited via directAggregateCallValueNodes), not a sequential local
-  // return whose trailing read is an uncounted local reference.
+  // return whose trailing read is an uncounted local reference. A trailing
+  // closure-value indirect call (`let g = f; return g(42);`) is the
+  // RFC 0057 slice 1b value-caller shape, which carries its own checksum
+  // terms.
   if (localCount >= 2) {
     auto trailingCallReturn = returnFor(module, block.statements[lastIndex]);
     bool trailingIsDirectCall = false;
+    bool trailingIsIndirectCall = false;
     ZC_IF_SOME(statement, trailingCallReturn) {
       if (callFor(module, statement.value) != zc::none) trailingIsDirectCall = true;
+      if (indirectCallFor(module, statement.value) != zc::none) trailingIsIndirectCall = true;
     }
-    if (!trailingIsDirectCall) return true;
+    if (!trailingIsDirectCall && !trailingIsIndirectCall) return true;
   }
   auto localBinding = localFor(module, block.statements[0]);
   if (localBinding == zc::none) return false;
@@ -3118,13 +3134,15 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
       static_cast<int64_t>(hirModule.declarations().size() + hirModule.functions().size() +
                            hirModule.conditionals().size() * 2 +
                            hirModule.primitiveBinaryOperations().size() + hirModule.loops().size() +
-                           hirModule.conditionalLocalWrites().size()) +
+                           hirModule.conditionalLocalWrites().size() +
+                           hirModule.indirectCalls().size()) +
       sequentialValueNodeExcess + directAggregateCallValueNodes +
       leadingLocalConditionalValueNodeExcess + forLoopAccumulatorCorrection +
       rawPointerWriteExcess + primitiveBinaryLocalValueNodeBalance +
       diamondConditionLocalOperandBalance;
   const int64_t rhsChecksum =
       static_cast<int64_t>(hirModule.expressions().size() + hirModule.calls().size() +
+                           hirModule.closureAddresses().size() + hirModule.indirectCalls().size() +
                            hirModule.aggregates().size() + uninitializedLocalReturnCount +
                            parameterReturnCount + parameterReborrowCount +
                            hirModule.parameterFieldProjections().size() +

@@ -886,23 +886,46 @@ ZC_TEST("CompilerSessionTest.MultiParameterNonCapturingClosureKeepsCapabilityDra
       "return f(42); }\n"_zc);
 }
 
-ZC_TEST("CompilerSessionTest.CopiedClosureValueCallPassesCheckingAndDrainsAtHir") {
+ZC_TEST("CompilerSessionTest.CopiedClosureValueCallLowersToHirAndMir") {
   // RFC 0057 slice 1b value carrier: calling a closure value reached through a
   // whole-local copy chain (`let g = f; g(42)`) resolves to the closure
-  // definition in the body checker, so it produces no type error. HIR does not
-  // yet lower the function-address/indirect-call value path, so the body keeps
-  // the HIR capability drain (one ZOM4099, zero HIR modules, zero incidents).
+  // definition in the body checker and lowers through the HIR closure-address/
+  // indirect-call value path into the MIR code-pointer carrier. The body
+  // publishes HIR and MIR with zero diagnostics and zero incidents.
   auto session = packageSession(
       "fn entry() -> i32 { let f = fn(n: i32) -> i32 { return n; }; "
       "let g = f; return g(42); }\n"_zc);
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
-  ZC_EXPECT(!session->checkSources());
-  ZC_EXPECT(diagnosticCount(*session, diagnostics::DiagID::TypeCheckerTypeMismatch) == 0);
-  ZC_EXPECT(diagnosticCount(*session, diagnostics::DiagID::FunctionBodySemanticsUnavailable) == 1);
-  ZC_EXPECT(session->getVerifiedHirModules().size() == 0);
+  ZC_EXPECT(session->checkSources());
+  ZC_EXPECT(!session->hasDiagnosticErrors());
   ZC_EXPECT(session->getIncidents().empty());
+  ZC_REQUIRE(session->getVerifiedHirModules().size() == 1);
+  const auto& hir = session->getVerifiedHirModules()[0];
+  // The entry and the closure.
+  ZC_EXPECT(hir.functions().size() == 2);
+  // The value path pools one closure address and one indirect call.
+  ZC_EXPECT(hir.closureAddresses().size() == 1);
+  ZC_EXPECT(hir.indirectCalls().size() == 1);
+  ZC_EXPECT(hir.calls().size() == 0);
+  // The indirect call carries the explicit literal argument and targets the
+  // closure named by the closure-address record.
+  const auto& indirectCall = hir.indirectCalls()[0];
+  ZC_EXPECT(indirectCall.arguments.size() == 1);
+  ZC_EXPECT(indirectCall.callee == hir.closureAddresses()[0].closure);
+  // The entry owns two pointer-chain locals and the closure owns one parameter.
+  size_t parameterBearingFunctions = 0;
+  size_t closureParameterTotal = 0;
+  for (const auto& function : hir.functions()) {
+    if (function.parameters.size() == 0) { continue; }
+    ++parameterBearingFunctions;
+    closureParameterTotal += function.parameters.size();
+  }
+  ZC_EXPECT(parameterBearingFunctions == 1);
+  ZC_EXPECT(closureParameterTotal == 1);
+  ZC_REQUIRE(session->getOwnershipCheckedMirModules().size() == 1);
+  ZC_EXPECT(session->getOwnershipCheckedMirModules()[0].builtMir().functions().size() == 2);
 }
 
 ZC_TEST("CompilerSessionTest.ReferenceParameterClosureKeepsCheckerCapabilityDrain") {

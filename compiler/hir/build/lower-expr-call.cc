@@ -54,6 +54,74 @@ void lowerDirectCallReturnFunction(PendingFunctionDeclaration&& function, HirFnC
       HirReturnStatement{returnId, function.resultType, callId, function.returnSpan.clone()});
 }
 
+void lowerClosureValueCallReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
+  auto& shape = function.shape.get<ClosureValueCallReturn>();
+  HirLocalBinding originBinding = zc::mv(shape.originBinding);
+  HirClosureAddressExpression closureAddress = zc::mv(shape.closureAddress);
+  zc::Vector<ClosureValueCallReturn::AliasLocal> aliases = zc::mv(shape.aliases);
+  HirLocalReferenceExpression functionReference = zc::mv(shape.functionReference);
+  HirIndirectCallExpression call = zc::mv(shape.call);
+
+  // Fixed source-preorder stride: function F, body F+1, then per slot one
+  // binding and one initializer node (F+2+2i / F+3+2i), then return F+2+2K,
+  // the indirect call's pointer local reference F+3+2K, and the indirect call
+  // F+4+2K. All body nodes except function, body, return, and the call itself
+  // are synthetic: the dedicated verifier branch anchors them to the source
+  // shape directly.
+  const HirNodeId functionId = ctx.allocNode(function.sourceNode);
+  const HirNodeId bodyId = ctx.allocNode(function.bodyNode);
+  const HirNodeId originBindingId = ctx.allocNode(ast::NodeId());
+  const HirNodeId originInitializerId = ctx.allocNode(ast::NodeId());
+  zc::Vector<HirNodeId> aliasBindingIds;
+  zc::Vector<HirNodeId> aliasInitializerIds;
+  for (size_t index = 0; index < aliases.size(); ++index) {
+    aliasBindingIds.add(ctx.allocNode(ast::NodeId()));
+    aliasInitializerIds.add(ctx.allocNode(ast::NodeId()));
+  }
+  const HirNodeId returnId = ctx.allocNode(function.returnNode);
+  const HirNodeId functionReferenceId = ctx.allocNode(ast::NodeId());
+  const HirNodeId callId = ctx.allocNode(function.returnValueNode);
+
+  ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
+                                         zc::mv(function.parameters), zc::none,
+                                         function.visibility.clone(), function.linkage,
+                                         function.declarationSpan.clone(), bodyId, zc::none});
+  zc::Vector<HirNodeId> statements;
+  statements.add(originBindingId);
+  for (const auto bindingId : aliasBindingIds) { statements.add(bindingId); }
+  statements.add(returnId);
+  ctx.addBlock(HirBlockStatement{bodyId, zc::mv(statements), function.bodySpan.clone()});
+
+  // Origin slot (local 1): initialized from the closure address.
+  ctx.addLocal(HirLocalBinding{originBindingId, hirLocalId(1), closureAddress.functionType,
+                               originInitializerId, originBinding.sourceSpan.clone(),
+                               ZC_ASSERT_NONNULL(originBinding.initializerSpan).clone()});
+  ctx.addClosureAddress(HirClosureAddressExpression{originInitializerId, closureAddress.closure,
+                                                    closureAddress.functionType,
+                                                    closureAddress.sourceSpan.clone()});
+  // Each alias slot initializes from a whole-local reference to the previous
+  // slot.
+  for (size_t index = 0; index < aliases.size(); ++index) {
+    auto& alias = aliases[index];
+    ctx.addLocal(HirLocalBinding{aliasBindingIds[index], alias.binding.local, alias.binding.type,
+                                 aliasInitializerIds[index], alias.binding.sourceSpan.clone(),
+                                 ZC_ASSERT_NONNULL(alias.binding.initializerSpan).clone()});
+    ctx.addLocalReference(HirLocalReferenceExpression{
+        aliasInitializerIds[index], alias.initializerReference.local,
+        alias.initializerReference.type, alias.initializerReference.category,
+        alias.initializerReference.sourceSpan.clone()});
+  }
+  // The indirect call reads the final slot (local K).
+  ctx.addLocalReference(HirLocalReferenceExpression{
+      functionReferenceId, functionReference.local, functionReference.type,
+      functionReference.category, functionReference.sourceSpan.clone()});
+  ctx.addReturn(
+      HirReturnStatement{returnId, function.resultType, callId, function.returnSpan.clone()});
+  ctx.addIndirectCall(HirIndirectCallExpression{callId, functionReferenceId, call.callee,
+                                                call.resultType, zc::mv(call.arguments),
+                                                call.sourceSpan.clone()});
+}
+
 void lowerDirectCallInitializerFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
   auto& shape = function.shape.get<DirectCallInitializerReturn>();
   HirDirectCallExpression call = zc::mv(shape.call);
