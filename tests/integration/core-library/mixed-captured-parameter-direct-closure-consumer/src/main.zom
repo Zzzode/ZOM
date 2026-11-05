@@ -1,0 +1,13 @@
+// RFC 0057 slice 2 mixed form: one declared by-value i32 parameter and one
+// arithmetic-read Copy scalar capture, called directly on the origin closure
+// binding with no whole-local copy chain and one source literal argument.
+// The captured slot initializes the caller slot, the origin holds the closure
+// address, and the direct indirect call passes the literal plus the captured
+// slot by value. The program exits 42 through --experimental-captures.
+fn entry() -> i32 {
+  let a: i32 = 40;
+  let f = fn(n: i32) -> i32 {
+    return n + a;
+  };
+  return f(2);
+}

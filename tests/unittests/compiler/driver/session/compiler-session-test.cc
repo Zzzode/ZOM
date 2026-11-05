@@ -1214,6 +1214,50 @@ ZC_TEST("CompilerSessionTest.MixedCapturedParameterCopiedClosureValueCallLowersT
   ZC_EXPECT(session->getOwnershipCheckedMirModules()[0].builtMir().functions().size() == 2);
 }
 
+ZC_TEST("CompilerSessionTest.MixedCapturedParameterDirectClosureCallLowersToHirAndMir") {
+  // RFC 0057 slice 2 mixed form reached directly on the origin closure binding
+  // (`return f(2)`) with no whole-local copy chain. The origin itself holds the
+  // closure address, so the caller captured-value rail resolves the closure
+  // signature from the origin and emits the same declared-first two-argument
+  // indirect call: the source literal keeps ordinary position zero and the
+  // captured local follows as the synthetic by-value environment argument. The
+  // closure function still carries the declared parameter then the environment
+  // parameter. HIR and MIR publish with zero diagnostics and zero incidents.
+  auto session = packageSession(
+      "fn entry() -> i32 { let a: i32 = 40; "
+      "let f = fn(n: i32) -> i32 { return n + a; }; "
+      "return f(2); }\n"_zc,
+      {}, true, /*experimentalCaptures=*/true);
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(session->checkSources());
+  ZC_EXPECT(!session->hasDiagnosticErrors());
+  ZC_EXPECT(session->getIncidents().empty());
+  ZC_REQUIRE(session->getVerifiedHirModules().size() == 1);
+  const auto& hir = session->getVerifiedHirModules()[0];
+  ZC_EXPECT(hir.functions().size() == 2);
+  ZC_EXPECT(hir.closureAddresses().size() == 1);
+  ZC_EXPECT(hir.indirectCalls().size() == 1);
+  ZC_EXPECT(hir.primitiveBinaryOperations().size() == 1);
+  const auto& indirectCall = hir.indirectCalls()[0];
+  ZC_EXPECT(indirectCall.arguments.size() == 2);
+  // Declared-first ABI with no copy chain: literal argument first, captured
+  // local environment argument second.
+  ZC_EXPECT(indirectCall.arguments[0].local == zc::none);
+  ZC_EXPECT(indirectCall.arguments[0].value != zc::none);
+  ZC_EXPECT(indirectCall.arguments[1].local != zc::none);
+  ZC_EXPECT(indirectCall.arguments[1].value == zc::none);
+  ZC_EXPECT(indirectCall.callee == hir.closureAddresses()[0].closure);
+  size_t closureParameterTotal = 0;
+  for (const auto& function : hir.functions()) {
+    closureParameterTotal += function.parameters.size();
+  }
+  ZC_EXPECT(closureParameterTotal == 2);
+  ZC_REQUIRE(session->getOwnershipCheckedMirModules().size() == 1);
+  ZC_EXPECT(session->getOwnershipCheckedMirModules()[0].builtMir().functions().size() == 2);
+}
+
 ZC_TEST("CompilerSessionTest.ReferenceParameterClosureKeepsCheckerCapabilityDrain") {
   // RFC 0057 slice 1b boundary: a reference-typed closure parameter needs the
   // reference-call ABI of a later slice. The closure publishes no signature,
