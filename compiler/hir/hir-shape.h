@@ -346,6 +346,10 @@ struct FunctionReturnShape final {
     ast::NodeId initializer{};
   };
   zc::Vector<CapturedScalarLocal> capturedLocals;
+  // Declared-argument expressions of the trailing indirect call, in source
+  // order. Empty for the environment-only B1/B2 forms; the mixed
+  // one-parameter form carries one scalar-literal expression.
+  zc::Vector<ast::NodeId> closureValueCallArguments;
   // Two-statement existential-call shape: a leading existential-initialized
   // local whose initializer is a direct call returning the existential type,
   // passed as the sole argument of a returned direct free-function call:

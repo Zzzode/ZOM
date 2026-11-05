@@ -3203,9 +3203,39 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
         const ast::NodeId finalPattern = orderedCopies.size() == 0
                                              ? capturedOriginPattern
                                              : orderedCopies[orderedCopies.size() - 1].pattern;
+        // The environment-only forms pass zero source arguments; the mixed
+        // one-parameter form passes one scalar-literal declared argument.
+        zc::Vector<ast::NodeId> sourceArgumentShapes;
+        bool sourceArgumentsMatch =
+            tree.contains(callArguments) && (callArguments.empty() || callArguments.size == 1);
+        if (sourceArgumentsMatch && callArguments.size == 1) {
+          const ast::NodeId soleArgument = tree.list(callArguments)[0];
+          if (!tree.contains(soleArgument) || !isScalarLiteral(tree.node(soleArgument).kind)) {
+            sourceArgumentsMatch = false;
+          } else {
+            sourceArgumentShapes.add(soleArgument);
+          }
+        }
+        if (sourceArgumentsMatch) {
+          const ast::NodeId originParameterList(
+              tree.node(capturedOriginInitializer)
+                  .payload.words[ast::kFunctionExpressionParamsIdWord]);
+          if (!tree.contains(originParameterList) ||
+              tree.node(originParameterList).kind != ast::SyntaxKind::FunctionParameterList) {
+            sourceArgumentsMatch = false;
+          } else {
+            const ast::NodeList originParameters{
+                tree.node(originParameterList)
+                    .payload.words[ast::kFunctionParameterListParamsFirstWord],
+                tree.node(originParameterList)
+                    .payload.words[ast::kFunctionParameterListParamsSizeWord]};
+            if (!tree.contains(originParameters) || originParameters.size != callArguments.size) {
+              sourceArgumentsMatch = false;
+            }
+          }
+        }
         if (tree.contains(callCallee) && tree.node(callCallee).kind == ast::SyntaxKind::IdentExpr &&
-            tree.contains(callTypeArguments) && callTypeArguments.empty() &&
-            tree.contains(callArguments) && callArguments.empty() &&
+            tree.contains(callTypeArguments) && callTypeArguments.empty() && sourceArgumentsMatch &&
             matchesLocalReference(tree, finalPattern, callCallee)) {
           FunctionReturnShape capturedValueShape{};
           capturedValueShape.body = body;
@@ -3213,6 +3243,7 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
           capturedValueShape.value = value;
           capturedValueShape.returnsCapturingClosureValueCall = true;
           capturedValueShape.capturedLocals = zc::mv(capturedLocalShapes);
+          capturedValueShape.closureValueCallArguments = zc::mv(sourceArgumentShapes);
           capturedValueShape.closureAliasLet = capturedOriginLet;
           capturedValueShape.closureAliasPattern = capturedOriginPattern;
           capturedValueShape.closureAliasInitializer = capturedOriginInitializer;

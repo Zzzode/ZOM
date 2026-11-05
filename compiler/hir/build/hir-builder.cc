@@ -1223,6 +1223,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         }
         const auto& callable =
             signature.payload.variant().get<checker::signature::CallableSignature>();
+        // The entry signature carries zero parameters; the declared-parameter
+        // count and mixed-form decision come from the closure's own signature,
+        // resolved from the closure definition below.
         if (callable.parameters.size() != 0 || callable.receiver != zc::none ||
             callable.raises != zc::none || callable.abi != zc::none) {
           return rejectCapturedValue();
@@ -1247,12 +1250,42 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         }
         if (closureRow == nullptr) { return rejectCapturedValue(); }
         const auto closureDefId = closureRow->definition;
+        // The mixed form derives from the closure's own published signature:
+        // exactly one declared by-value i32 parameter plus the captured
+        // environment. The checker call fact carries only the declared source
+        // arguments, so declaredArgumentCount follows the closure signature.
+        const checker::signature::SemanticSignature* closureSignatureRow =
+            lookupSignature(closureDefId);
+        if (closureSignatureRow == nullptr ||
+            !closureSignatureRow->payload.variant().is<checker::signature::CallableSignature>()) {
+          return rejectCapturedValue();
+        }
+        const auto& closureCallable =
+            closureSignatureRow->payload.variant().get<checker::signature::CallableSignature>();
+        if (closureCallable.parameters.size() > 1 || closureCallable.receiver != zc::none ||
+            closureCallable.raises != zc::none || closureCallable.abi != zc::none ||
+            closureCallable.success != callable.success) {
+          return rejectCapturedValue();
+        }
+        const bool mixedParameterCapture = closureCallable.parameters.size() == 1;
+        if (mixedParameterCapture) {
+          const auto& declaredParameter = closureCallable.parameters[0];
+          if (declaredParameter.mode != checker::signature::ParameterMode::Value ||
+              declaredParameter.type != callable.success ||
+              !isI32SemanticType(checkedModule.semanticTypes(), declaredParameter.type)) {
+            return rejectCapturedValue();
+          }
+        }
+        const size_t declaredArgumentCount = closureCallable.parameters.size();
         // One or two verified Copy captures in canonical environment order.
         auto orderedFacts = sortedClosureCaptureFacts(facts.captures(), closureRow->closureKey);
         if (orderedFacts.size() < 1 || orderedFacts.size() > 2 ||
             orderedFacts.size() != shape.capturedLocals.size()) {
           return rejectCapturedValue();
         }
+        // The mixed one-parameter form combines its single declared parameter
+        // with exactly one captured slot.
+        if (mixedParameterCapture && orderedFacts.size() != 1) { return rejectCapturedValue(); }
         for (const auto* captureFact : orderedFacts) {
           if (captureFact->mode != checker::checked::CaptureMode::Copy ||
               captureFact->origin != checker::checked::CaptureOrigin::Inferred ||
@@ -1319,7 +1352,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         if (!tree.contains(calleeNode) ||
             tree.node(calleeNode).kind != ast::SyntaxKind::IdentExpr ||
             !tree.contains(callTypeArguments) || !callTypeArguments.empty() ||
-            !tree.contains(callArguments) || !callArguments.empty()) {
+            !tree.contains(callArguments) || callArguments.size != declaredArgumentCount ||
+            shape.closureValueCallArguments.size() != declaredArgumentCount) {
           return rejectCapturedValue();
         }
         {
@@ -1346,13 +1380,47 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         if (facts.nodeTypes().entries()[calleeTypeSlot].value != invocation.calleeType ||
             !selected.is<checker::checked::DirectCallable>() ||
             selected.get<checker::checked::DirectCallable>().callee != closureDefId ||
-            invocation.arguments.size() != 0 || invocation.receiver != zc::none ||
-            invocation.receiverMode != zc::none || invocation.receiverAdjustment != zc::none ||
-            invocation.substitutions != zc::none || invocation.witnesses != zc::none ||
-            invocation.raises != zc::none || invocation.successType != callable.success ||
+            invocation.arguments.size() != declaredArgumentCount ||
+            invocation.receiver != zc::none || invocation.receiverMode != zc::none ||
+            invocation.receiverAdjustment != zc::none || invocation.substitutions != zc::none ||
+            invocation.witnesses != zc::none || invocation.raises != zc::none ||
+            invocation.successType != callable.success ||
             invocation.resultType != callable.success ||
             !typeExists(invocation.calleeType, checkedModule.semanticTypes())) {
           return rejectCapturedValue();
+        }
+        // Mixed form: the one declared argument is a scalar-literal i32 whose
+        // checker call argument and literal fact reconcile exactly, carrying
+        // the published parameter key at ordinary position zero.
+        zc::Maybe<checker::checked::CanonicalConstValue> declaredLiteral;
+        zc::Maybe<identity::CallableParameterKey> declaredParameterKey;
+        identity::SourceSpan declaredArgumentSpan = definition.source.clone();
+        if (mixedParameterCapture) {
+          const ast::NodeId argumentNode = tree.list(callArguments)[0];
+          if (argumentNode != shape.closureValueCallArguments[0] ||
+              invocation.arguments[0].sourceNode != argumentNode ||
+              invocation.arguments[0].sourceType != callable.success ||
+              invocation.arguments[0].parameterType != callable.success ||
+              invocation.arguments[0].adjustment != zc::none) {
+            return rejectCapturedValue();
+          }
+          auto declaredLiteralIndex = factIndex(facts.literals(), argumentNode);
+          if (declaredLiteralIndex == zc::none) { return rejectCapturedValue(); }
+          const auto& declaredLiteralFact =
+              facts.literals().entries()[ZC_ASSERT_NONNULL(declaredLiteralIndex)].value;
+          if (declaredLiteralFact.node != argumentNode ||
+              declaredLiteralFact.type != callable.success) {
+            return rejectCapturedValue();
+          }
+          auto argumentSpan = bound.parsedModule().spanFor(tree.node(argumentNode).range);
+          if (argumentSpan == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::MissingRequiredFact, module,
+                                                 registries, ordinal + 2);
+          }
+          declaredLiteral = declaredLiteralFact.literal.clone();
+          declaredParameterKey = closureCallable.parameters[0].parameter.clone();
+          declaredArgumentSpan = ZC_ASSERT_NONNULL(argumentSpan).clone();
         }
         // Resolve each captured local's literal fact and spans, in canonical
         // capture order.
@@ -1442,6 +1510,17 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             HirNodeId(), finalSlot, functionType, HirValueCategory::Place,
             ZC_ASSERT_NONNULL(calleeSpan).clone()};
         zc::Vector<HirDirectCallArgument> pendingArguments;
+        if (mixedParameterCapture) {
+          // Declared-first ABI: the source literal keeps ordinary parameter
+          // position zero; the captured environment arguments follow.
+          zc::Maybe<HirLocalId> noLocal;
+          zc::Maybe<identity::DefId> noField;
+          zc::Maybe<checker::PrimitiveOperation> noComparison;
+          pendingArguments.add(HirDirectCallArgument{callable.success, zc::mv(declaredLiteral),
+                                                     zc::mv(declaredParameterKey), zc::mv(noLocal),
+                                                     zc::mv(noField), zc::mv(noComparison),
+                                                     zc::mv(declaredArgumentSpan)});
+        }
         for (size_t index = 0; index < capturedCount; ++index) {
           const auto& resolved = resolvedCaptured[index];
           zc::Maybe<checker::checked::CanonicalConstValue> noValue;
@@ -13816,10 +13895,11 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       // verified Copy scalar captures lowers to a function with one synthetic
       // by-value environment parameter per capture. One capture returns its
       // environment parameter directly; two captures return one integer
-      // arithmetic binary over the two parameters. The capture facts are the
-      // only gate; the experimental flag never reaches HIR. The checker
-      // signature keeps zero user parameters because the environment
-      // parameters are synthetic.
+      // arithmetic binary over the two parameters. The mixed slice-2 form
+      // combines one declared by-value i32 parameter with one capture: the
+      // body is one arithmetic binary over the declared parameter and the
+      // environment parameter. The capture facts are the only gate; the
+      // experimental flag never reaches HIR.
       auto orderedCaptureFacts = sortedClosureCaptureFacts(facts.captures(), closure.closureKey);
       const bool isCapturingClosure = orderedCaptureFacts.size() != 0;
       if (orderedCaptureFacts.size() > 2) { return rejectClosureCapability(); }
@@ -13830,13 +13910,24 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           return rejectClosureCapability();
         }
       }
-      if (parameterClosure && isCapturingClosure) { return rejectClosureCapability(); }
+      // The only admitted parameter-plus-capture combination is exactly one
+      // declared scalar parameter plus one capture; any other mix keeps the
+      // capability drain.
+      const bool mixedParameterCapture = parameterClosure && isCapturingClosure &&
+                                         closureParameterCount == 1 &&
+                                         orderedCaptureFacts.size() == 1;
+      if (parameterClosure && isCapturingClosure && !mixedParameterCapture) {
+        return rejectClosureCapability();
+      }
       // For a capturing closure, the body leaves in source return order, each
       // tagged with its canonical capture slot. One capture has one ident leaf;
-      // two captures have the binary's two ident leaves.
+      // two captures have the binary's two ident leaves; the mixed form has the
+      // binary's two ident leaves split across one capture slot and the
+      // declared parameter.
       struct CapturingLeaf {
         ast::NodeId node;
         size_t factSlot;
+        bool declaredParameter = false;
       };
       zc::Vector<CapturingLeaf> capturingLeaves;
       // Source anchors and spans. The lambda spelling has no source block or
@@ -13877,12 +13968,40 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           return rejectClosureCapability();
         }
         // Reconcile the body leaves with the canonical capture facts: every
-        // leaf names one fact's place node, and every fact is named once.
+        // leaf names one fact's place node, and every fact is named once. In
+        // the mixed form one leaf instead names the declared parameter.
+        auto namesDeclaredClosureParameter = [&](ast::NodeId leaf) -> bool {
+          if (!mixedParameterCapture) { return false; }
+          auto parameterBinding = resolvedOwnerLocal(bound.bindings(), leaf);
+          if (parameterBinding == zc::none) { return false; }
+          const ast::NodeId closureParameterListId(
+              closureTree.node(closure.node).payload.words[ast::kFunctionExpressionParamsIdWord]);
+          if (!closureTree.contains(closureParameterListId)) { return false; }
+          const ast::NodeList closureParameterNodes{
+              closureTree.node(closureParameterListId)
+                  .payload.words[ast::kFunctionParameterListParamsFirstWord],
+              closureTree.node(closureParameterListId)
+                  .payload.words[ast::kFunctionParameterListParamsSizeWord]};
+          if (!closureTree.contains(closureParameterNodes) || closureParameterNodes.size != 1) {
+            return false;
+          }
+          const ast::NodeId parameterDeclNode = closureTree.list(closureParameterNodes)[0];
+          for (const auto& local : bound.definitions().ownerLocalBindings()) {
+            if (local.binding != ZC_ASSERT_NONNULL(parameterBinding) ||
+                !local.site.value().is<binder::DeclarationDefinitionSite>()) {
+              continue;
+            }
+            return local.site.value().get<binder::DeclarationDefinitionSite>().node ==
+                   parameterDeclNode;
+          }
+          return false;
+        };
         zc::Vector<ast::NodeId> leafNodes;
-        if (orderedCaptureFacts.size() == 1 &&
+        const bool expectsBinary = orderedCaptureFacts.size() == 2 || mixedParameterCapture;
+        if (orderedCaptureFacts.size() == 1 && !mixedParameterCapture &&
             closureTree.node(closureShape.value).kind == ast::SyntaxKind::IdentExpr) {
           leafNodes.add(closureShape.value);
-        } else if (orderedCaptureFacts.size() == 2 &&
+        } else if (expectsBinary &&
                    closureTree.node(closureShape.value).kind == ast::SyntaxKind::BinaryExpr) {
           const ast::NodeId left(
               closureTree.node(closureShape.value).payload.words[ast::kBinaryExprLhsWord]);
@@ -13899,6 +14018,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         } else {
           return rejectClosureCapability();
         }
+        size_t matchedParameterLeaves = 0;
         for (const auto leaf : leafNodes) {
           zc::Maybe<size_t> leafSlot;
           for (size_t factSlot = 0; factSlot < orderedCaptureFacts.size(); ++factSlot) {
@@ -13907,15 +14027,25 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               leafSlot = factSlot;
             }
           }
-          if (leafSlot == zc::none) { return rejectClosureCapability(); }
+          if (leafSlot == zc::none) {
+            // The mixed form admits exactly one leaf naming the declared
+            // parameter in place of the second capture fact.
+            if (!namesDeclaredClosureParameter(leaf)) { return rejectClosureCapability(); }
+            ++matchedParameterLeaves;
+            capturingLeaves.add(CapturingLeaf{leaf, 0, /*declaredParameter=*/true});
+            continue;
+          }
           size_t slot = 0;
           ZC_IF_SOME(value, leafSlot) { slot = value; }
           for (const auto& existing : capturingLeaves) {
-            if (existing.factSlot == slot) { return rejectClosureCapability(); }
+            if (!existing.declaredParameter && existing.factSlot == slot) {
+              return rejectClosureCapability();
+            }
           }
           capturingLeaves.add(CapturingLeaf{leaf, slot});
         }
-        if (capturingLeaves.size() != orderedCaptureFacts.size()) {
+        if (matchedParameterLeaves != (mixedParameterCapture ? 1u : 0u) ||
+            capturingLeaves.size() != leafNodes.size()) {
           return rejectClosureCapability();
         }
         auto bodySpan = bound.parsedModule().spanFor(closureTree.node(closureShape.body).range);
@@ -14096,6 +14226,65 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       zc::Vector<HirParameter> closureParameters;
       zc::Maybe<PendingFunctionShape> closureBodyShapeVariant =
           [&]() -> zc::Maybe<PendingFunctionShape> {
+        if (mixedParameterCapture) {
+          // The declared parameter keeps its published key at ordinary
+          // position zero; the synthetic by-value environment parameter for
+          // the one capture follows at ordinary position one.
+          const auto& declaredParameter = closureCallable.parameters[0];
+          if (declaredParameter.type != closureCallable.success) { return zc::none; }
+          closureParameters.add(HirParameter{declaredParameter.parameter.clone(),
+                                             declaredParameter.type, closure.source.clone()});
+          auto environmentRecord = identity::CallableParameterIdentityRecord::from(
+              closure.key.clone(), identity::CallableParameterPosition::ordinary(1));
+          identity::CallableParameterKey environmentKey =
+              identity::CallableParameterKey::compute(environmentRecord);
+          closureParameters.add(HirParameter{environmentKey.clone(),
+                                             orderedCaptureFacts[0]->capturedType,
+                                             closure.source.clone()});
+          auto binaryCallIndex = factIndex(facts.calls(), closureValue);
+          if (binaryCallIndex == zc::none) { return zc::none; }
+          size_t binaryCallSlot = 0;
+          ZC_IF_SOME(value, binaryCallIndex) { binaryCallSlot = value; }
+          const auto& binaryInvocation = facts.calls().entries()[binaryCallSlot].value.invocation;
+          if (!binaryInvocation.selected.variant().is<checker::checked::PrimitiveCallable>() ||
+              binaryInvocation.arguments.size() != 2 ||
+              binaryInvocation.arguments[0].sourceNode != capturingLeaves[0].node ||
+              binaryInvocation.arguments[1].sourceNode != capturingLeaves[1].node ||
+              binaryInvocation.receiver != zc::none || binaryInvocation.substitutions != zc::none ||
+              binaryInvocation.witnesses != zc::none || binaryInvocation.raises != zc::none ||
+              binaryInvocation.successType != closureCallable.success ||
+              binaryInvocation.resultType != closureCallable.success) {
+            return zc::none;
+          }
+          const auto binaryOperation = binaryInvocation.selected.variant()
+                                           .get<checker::checked::PrimitiveCallable>()
+                                           .operation;
+          if (!isScalarArithmeticOperation(binaryOperation)) { return zc::none; }
+          auto buildMixedArm = [&](const CapturingLeaf& leaf) -> zc::Maybe<PendingConditionalArm> {
+            auto leafSpan = bound.parsedModule().spanFor(closureTree.node(leaf.node).range);
+            if (leafSpan == zc::none) { return zc::none; }
+            auto reference = HirParameterReferenceExpression{
+                HirNodeId(),
+                leaf.declaredParameter ? declaredParameter.parameter.clone()
+                                       : environmentKey.clone(),
+                closureCallable.success, HirValueCategory::Place,
+                ZC_ASSERT_NONNULL(leafSpan).clone()};
+            return PendingConditionalArm{zc::none,
+                                         zc::mv(reference),
+                                         zc::none,
+                                         closureCallable.success,
+                                         ZC_ASSERT_NONNULL(leafSpan).clone(),
+                                         zc::none,
+                                         leaf.node};
+          };
+          auto leftArm = buildMixedArm(capturingLeaves[0]);
+          auto rightArm = buildMixedArm(capturingLeaves[1]);
+          if (leftArm == zc::none || rightArm == zc::none) { return zc::none; }
+          return PendingFunctionShape{ComparisonReturn{PendingEqualityCondition{
+              zc::mv(ZC_ASSERT_NONNULL(leftArm)), zc::mv(ZC_ASSERT_NONNULL(rightArm)),
+              closureCallable.success, closureCallable.success, binaryOperation,
+              closureValueSpan.clone(), false, closureValue}}};
+        }
         if (parameterClosure) {
           for (const auto& publishedParameter : closureCallable.parameters) {
             closureParameters.add(HirParameter{publishedParameter.parameter.clone(),

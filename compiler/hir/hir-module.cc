@@ -1190,7 +1190,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                             index + 1);
       }
       const bool closureCaptures = orderedCaptureFacts.size() != 0;
-      const bool binaryClosure = orderedCaptureFacts.size() == 2;
+      bool binaryClosure = orderedCaptureFacts.size() == 2;
       for (const auto* closureCaptureFact : orderedCaptureFacts) {
         if (closureCaptureFact->mode != checker::checked::CaptureMode::Copy ||
             closureCaptureFact->origin != checker::checked::CaptureOrigin::Inferred ||
@@ -1239,7 +1239,18 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                     earlyCallable.receiver == zc::none &&
                                     earlyCallable.raises == zc::none &&
                                     earlyCallable.abi == zc::none;
+      // The mixed slice-2 form combines exactly one declared scalar parameter
+      // with one Copy capture in one arithmetic body.
+      const bool mixedParameterCapture =
+          closureCaptures && closureParameterCount == 1 && orderedCaptureFacts.size() == 1 &&
+          earlyCallable.receiver == zc::none && earlyCallable.raises == zc::none &&
+          earlyCallable.abi == zc::none;
       if (!closureCaptures && closureParameterCount != 0 && !parameterClosure) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      if (closureCaptures && closureParameterCount != 0 && !mixedParameterCapture) {
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                             ir::IrFailureKind::InvalidFact, module, registries,
                                             index + 1);
@@ -1249,6 +1260,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                             ir::IrFailureKind::InvalidFact, module, registries,
                                             index + 1);
       }
+      if (mixedParameterCapture) { binaryClosure = true; }
       // A one-capture closure occupies four source-preorder node ids (function,
       // body, return, parameter reference); a two-capture closure occupies six
       // (function, body, left parameter reference, right parameter reference,
@@ -1258,8 +1270,9 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       // (value F+3) and at F+5 for the two-leaf binary shape (left F+2, right
       // F+3, binary F+4).
       const HirNodeId closureReturnId = hirId(expectedFunction + (binaryClosure ? 5 : 2));
-      const size_t expectedParameterCount =
-          parameterClosure ? closureParameterCount : orderedCaptureFacts.size();
+      const size_t expectedParameterCount = mixedParameterCapture ? 2
+                                            : parameterClosure    ? closureParameterCount
+                                                                  : orderedCaptureFacts.size();
       if (function.node != hirId(expectedFunction) || block.node != hirId(expectedFunction + 1) ||
           function.body != block.node || block.statements.size() != 1 ||
           block.statements[0] != closureReturnId || function.receiver != zc::none ||
@@ -1268,12 +1281,13 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                             ir::IrFailureKind::InvalidFact, module, registries,
                                             index + 1);
       }
-      if (parameterClosure) {
+      if (parameterClosure || mixedParameterCapture) {
         // Every declared parameter must match the published signature
         // parameter at its ordinary position: the content-addressed key and
-        // the published integer scalar type.
-        for (size_t parameterPosition = 0; parameterPosition < closureParameterCount;
-             ++parameterPosition) {
+        // the published integer scalar type. The mixed form has exactly one
+        // declared parameter at ordinary position zero.
+        const size_t declaredCount = mixedParameterCapture ? 1 : closureParameterCount;
+        for (size_t parameterPosition = 0; parameterPosition < declaredCount; ++parameterPosition) {
           const auto& publishedParameter = earlyCallable.parameters[parameterPosition];
           if (function.parameters[parameterPosition].key != publishedParameter.parameter ||
               function.parameters[parameterPosition].type != publishedParameter.type) {
@@ -1287,12 +1301,18 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         // Recompute each synthetic environment key from the closure
         // DefinitionKey and its ordinary position; no binder callable-parameter
         // authority exists for it. Parameters follow canonical capture order.
+        // In the mixed form the declared parameter occupies ordinary position
+        // zero, so the one environment parameter shifts to both positions one.
+        const size_t ordinaryPosition = (mixedParameterCapture ? 1u : 0u) + position;
+        const size_t hirParameterIndex = ordinaryPosition;
         auto expectedEnvironmentRecord = identity::CallableParameterIdentityRecord::from(
-            closureDefinition.key.clone(), identity::CallableParameterPosition::ordinary(position));
+            closureDefinition.key.clone(),
+            identity::CallableParameterPosition::ordinary(ordinaryPosition));
         identity::CallableParameterKey expectedEnvironmentKey =
             identity::CallableParameterKey::compute(expectedEnvironmentRecord);
-        if (function.parameters[position].key != expectedEnvironmentKey ||
-            function.parameters[position].type != orderedCaptureFacts[position]->capturedType) {
+        if (function.parameters[hirParameterIndex].key != expectedEnvironmentKey ||
+            function.parameters[hirParameterIndex].type !=
+                orderedCaptureFacts[position]->capturedType) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                               ir::IrFailureKind::InvalidFact, module, registries,
                                               index + 1);
@@ -1476,7 +1496,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             if (!isScalarLiteral(closureTree.node(closureSource.value).kind)) {
               closureSourceValueValid = false;
             }
-          } else if (orderedCaptureFacts.size() == 1) {
+          } else if (orderedCaptureFacts.size() == 1 && !mixedParameterCapture) {
             if (closureTree.node(closureSource.value).kind != ast::SyntaxKind::IdentExpr) {
               closureSourceValueValid = false;
             } else {
@@ -1503,11 +1523,13 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           }
         }
         if (closureSourceValueValid && closureCaptures) {
-          // The body leaves name every capture place exactly once.
+          // The body leaves name every capture place exactly once. In the
+          // mixed form one leaf instead names the declared parameter.
           zc::Vector<bool> matchedFacts;
           for (size_t factSlot = 0; factSlot < orderedCaptureFacts.size(); ++factSlot) {
             matchedFacts.add(false);
           }
+          size_t matchedDeclaredLeaves = 0;
           for (const auto leaf : sourceLeafNodes) {
             zc::Maybe<size_t> matchedSlot;
             for (size_t factSlot = 0; factSlot < orderedCaptureFacts.size(); ++factSlot) {
@@ -1519,8 +1541,19 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               matchedSlot = factSlot;
             }
             if (matchedSlot == zc::none) {
-              closureSourceValueValid = false;
-              break;
+              if (!mixedParameterCapture) {
+                closureSourceValueValid = false;
+                break;
+              }
+              size_t declaredLeafIndex = 0;
+              if (!namesOneDeclaredParameter(leaf, ast::kFunctionExpressionParamsIdWord,
+                                             declaredLeafIndex) ||
+                  declaredLeafIndex != 0) {
+                closureSourceValueValid = false;
+                break;
+              }
+              ++matchedDeclaredLeaves;
+              continue;
             }
             size_t slot = 0;
             ZC_IF_SOME(value, matchedSlot) { slot = value; }
@@ -1529,6 +1562,10 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               break;
             }
             matchedFacts[slot] = true;
+          }
+          if (closureSourceValueValid &&
+              matchedDeclaredLeaves != (mixedParameterCapture ? 1u : 0u)) {
+            closureSourceValueValid = false;
           }
           if (closureSourceValueValid) {
             for (const auto matched : matchedFacts) {
@@ -1651,11 +1688,22 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         }
         auto expectedKeyForLeaf =
             [&](ast::NodeId leaf) -> zc::Maybe<identity::CallableParameterKey> {
+          if (mixedParameterCapture) {
+            size_t declaredLeafIndex = 0;
+            if (namesOneDeclaredParameter(leaf, ast::kFunctionExpressionParamsIdWord,
+                                          declaredLeafIndex) &&
+                declaredLeafIndex == 0) {
+              return earlyCallable.parameters[0].parameter.clone();
+            }
+          }
           for (size_t factSlot = 0; factSlot < orderedCaptureFacts.size(); ++factSlot) {
             if (orderedCaptureFacts[factSlot]->place.node != leaf) { continue; }
+            // The mixed form's one environment parameter follows the declared
+            // parameter at ordinary position one.
+            const size_t ordinaryPosition = (mixedParameterCapture ? 1u : 0u) + factSlot;
             auto record = identity::CallableParameterIdentityRecord::from(
                 closureDefinition.key.clone(),
-                identity::CallableParameterPosition::ordinary(factSlot));
+                identity::CallableParameterPosition::ordinary(ordinaryPosition));
             return identity::CallableParameterKey::compute(record);
           }
           return zc::none;
@@ -1778,7 +1826,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           closureCallable.receiver == zc::none && closureCallable.raises == zc::none &&
           closureCallable.abi == zc::none;
       if (closureCallable.success != function.resultType ||
-          (expectedParameterClosure ? !parameterClosure : closurePublishedParameterCount != 0) ||
+          (expectedParameterClosure ? (!parameterClosure && !mixedParameterCapture)
+                                    : closurePublishedParameterCount != 0) ||
           (!expectedParameterClosure && parameterClosure) || closureCallable.receiver != zc::none ||
           closureCallable.raises != zc::none || closureCallable.abi != zc::none ||
           function.linkage != HirLinkage::Internal ||
@@ -14624,13 +14673,14 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
     }
     // RFC 0057 slice 2 captured closure-value caller: N leading captured scalar
     // locals (N in 1..2), K pointer-chain slots (origin closure address plus K-1
-    // copies), and a trailing zero-source-argument indirect call through the
-    // final slot. The HIR preorder is the value-call layout with N literal
-    // slots prepended: function F, body F+1, per capture binding/literal
-    // F+2+2i/F+3+2i, then per pointer slot binding/initializer, then return,
-    // the pointer reference, and the indirect call with N implicit local 1..N
-    // by-value environment arguments in canonical capture order. The source
-    // call and checker facts carry zero arguments.
+    // copies), and a trailing indirect call through the final slot. The HIR
+    // preorder is the value-call layout with N literal slots prepended:
+    // function F, body F+1, per capture binding/literal F+2+2i/F+3+2i, then per
+    // pointer slot binding/initializer, then return, the pointer reference, and
+    // the indirect call. The environment-only forms pass N implicit local 1..N
+    // by-value environment arguments in canonical capture order with zero
+    // source arguments; the mixed one-parameter form passes one source scalar
+    // literal first and the one captured local second.
     if (sourceShapeMaybe != zc::none &&
         ZC_ASSERT_NONNULL(sourceShapeMaybe).returnsCapturingClosureValueCall) {
       const FunctionReturnShape& source = ZC_ASSERT_NONNULL(sourceShapeMaybe);
@@ -14645,7 +14695,11 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                             registries, index + 1);
       };
       const size_t capturedCount = source.capturedLocals.size();
-      if (capturedCount < 1 || capturedCount > 2) { return rejectCapturedValueCall(); }
+      const size_t declaredArgumentCount = source.closureValueCallArguments.size();
+      if (capturedCount < 1 || capturedCount > 2 ||
+          (declaredArgumentCount != 0 && declaredArgumentCount != 1)) {
+        return rejectCapturedValueCall();
+      }
       const size_t copyCount = source.closureValueCopies.size();
       const size_t pointerCount = copyCount + 1;
       const size_t slotCount = capturedCount + pointerCount;
@@ -14860,10 +14914,12 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           returnStatementRecord.value != call.node ||
           returnStatementRecord.resultType != function.resultType ||
           call.node != capturedValueCallId || call.function != pointerReference.node ||
-          call.resultType != function.resultType || call.arguments.size() != capturedCount) {
+          call.resultType != function.resultType ||
+          call.arguments.size() != capturedCount + declaredArgumentCount) {
         return rejectCapturedValueCall();
       }
-      for (const auto& callArgument : call.arguments) {
+      for (size_t position = 0; position < capturedCount; ++position) {
+        const auto& callArgument = call.arguments[declaredArgumentCount + position];
         if (callArgument.value != zc::none || callArgument.parameter != zc::none ||
             callArgument.field != zc::none || callArgument.comparisonOperation != zc::none) {
           return rejectCapturedValueCall();
@@ -14991,8 +15047,16 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       if (!sourceTree.contains(sourceCalleeNode) ||
           sourceTree.node(sourceCalleeNode).kind != ast::SyntaxKind::IdentExpr ||
           !sourceTree.contains(sourceTypeArguments) || !sourceTypeArguments.empty() ||
-          !sourceTree.contains(sourceArguments) || !sourceArguments.empty()) {
+          !sourceTree.contains(sourceArguments) || sourceArguments.size != declaredArgumentCount) {
         return rejectCapturedValueCall();
+      }
+      for (size_t position = 0; position < declaredArgumentCount; ++position) {
+        const ast::NodeId argumentNode = sourceTree.list(sourceArguments)[position];
+        if (argumentNode != source.closureValueCallArguments[position] ||
+            !sourceTree.contains(argumentNode) ||
+            !isScalarLiteral(sourceTree.node(argumentNode).kind)) {
+          return rejectCapturedValueCall();
+        }
       }
       {
         auto calleeBinding = resolvedOwnerLocal(bound.bindings(), sourceCalleeNode);
@@ -15073,14 +15137,76 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           invocation.successType != function.resultType ||
           invocation.resultType != function.resultType || invocation.receiver != zc::none ||
           invocation.receiverMode != zc::none || invocation.receiverAdjustment != zc::none ||
-          invocation.arguments.size() != 0 || invocation.substitutions != zc::none ||
-          invocation.witnesses != zc::none || invocation.raises != zc::none ||
-          dispatch.fact.receiver != zc::none || dispatch.fact.arguments.size() != 0 ||
+          invocation.arguments.size() != declaredArgumentCount ||
+          invocation.substitutions != zc::none || invocation.witnesses != zc::none ||
+          invocation.raises != zc::none || dispatch.fact.receiver != zc::none ||
+          dispatch.fact.arguments.size() != declaredArgumentCount ||
           dispatch.fact.successType != function.resultType ||
           dispatch.fact.resultType != function.resultType ||
           dispatch.fact.substitutions != zc::none || dispatch.fact.witnesses != zc::none ||
           dispatch.fact.raises != zc::none) {
         return rejectCapturedValueCall();
+      }
+      // Mixed form: the leading declared argument is the one source scalar
+      // literal, carrying the closure signature's published parameter key at
+      // ordinary position zero.
+      if (declaredArgumentCount == 1) {
+        const ast::NodeId argumentNode = source.closureValueCallArguments[0];
+        auto declaredLiteralIndex = factIndex(facts.literals(), argumentNode);
+        if (declaredLiteralIndex == zc::none) { return rejectCapturedValueCallMissing(); }
+        const auto& declaredLiteralFact =
+            facts.literals().entries()[ZC_ASSERT_NONNULL(declaredLiteralIndex)].value;
+        auto declaredArgumentKey = checkedNodeKey(sourceTree, bound.parsedModule(), argumentNode);
+        if (declaredArgumentKey == zc::none) { return rejectCapturedValueCallMissing(); }
+        if (invocation.arguments[0].sourceNode != argumentNode ||
+            invocation.arguments[0].sourceType != function.resultType ||
+            invocation.arguments[0].parameterType != function.resultType ||
+            invocation.arguments[0].adjustment != zc::none ||
+            !sameNodeKey(dispatch.fact.arguments[0].sourceNode,
+                         ZC_ASSERT_NONNULL(declaredArgumentKey)) ||
+            declaredLiteralFact.node != argumentNode ||
+            declaredLiteralFact.type != function.resultType) {
+          return rejectCapturedValueCall();
+        }
+        const auto& declaredArgument = call.arguments[0];
+        if (declaredArgument.local != zc::none || declaredArgument.field != zc::none ||
+            declaredArgument.comparisonOperation != zc::none ||
+            declaredArgument.parameter == zc::none || declaredArgument.value == zc::none ||
+            declaredArgument.type != function.resultType) {
+          return rejectCapturedValueCall();
+        }
+        bool parameterKeyMatches = false;
+        auto matchDeclaredParameter = [&](zc::ArrayPtr<const checker::signature::SemanticSignature>
+                                              signatureRows) {
+          for (const auto& semanticSignature : signatureRows) {
+            if (semanticSignature.definition != closureDefId ||
+                !semanticSignature.payload.variant().is<checker::signature::CallableSignature>()) {
+              continue;
+            }
+            const auto& closureSignature =
+                semanticSignature.payload.variant().get<checker::signature::CallableSignature>();
+            if (closureSignature.parameters.size() != 1) { return false; }
+            if (closureSignature.parameters[0].type != function.resultType) { return false; }
+            return ZC_ASSERT_NONNULL(declaredArgument.parameter) ==
+                   closureSignature.parameters[0].parameter;
+          }
+          return false;
+        };
+        // Closure signatures are published on the local signature facts rail;
+        // check both sources defensively.
+        parameterKeyMatches = matchDeclaredParameter(signatures.definitions.asPtr()) ||
+                              matchDeclaredParameter(
+                                  candidate.impl->checkedModule.localSignatureFacts().signatures());
+        if (!parameterKeyMatches ||
+            !sameConstant(ZC_ASSERT_NONNULL(declaredArgument.value), declaredLiteralFact.literal,
+                          module, registries, semanticTypes)) {
+          return rejectCapturedValueCall();
+        }
+        auto argumentSpan = bound.parsedModule().spanFor(sourceTree.node(argumentNode).range);
+        if (argumentSpan == zc::none ||
+            !sameSpan(declaredArgument.sourceSpan, ZC_ASSERT_NONNULL(argumentSpan))) {
+          return rejectCapturedValueCall();
+        }
       }
       for (size_t position = 0; position < capturedCount; ++position) {
         const auto& capturedLocal = source.capturedLocals[position];
@@ -15103,12 +15229,13 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             !sameSpan(localRecord.sourceSpan, ZC_ASSERT_NONNULL(localSpan)) ||
             !sameSpan(ZC_ASSERT_NONNULL(localRecord.initializerSpan),
                       ZC_ASSERT_NONNULL(initializerSpan)) ||
-            call.arguments[position].value != zc::none ||
-            call.arguments[position].parameter != zc::none ||
-            call.arguments[position].field != zc::none ||
-            call.arguments[position].local != hirLocalId(position + 1) ||
-            call.arguments[position].type != localRecord.type ||
-            !sameSpan(call.arguments[position].sourceSpan, ZC_ASSERT_NONNULL(localSpan))) {
+            call.arguments[declaredArgumentCount + position].value != zc::none ||
+            call.arguments[declaredArgumentCount + position].parameter != zc::none ||
+            call.arguments[declaredArgumentCount + position].field != zc::none ||
+            call.arguments[declaredArgumentCount + position].local != hirLocalId(position + 1) ||
+            call.arguments[declaredArgumentCount + position].type != localRecord.type ||
+            !sameSpan(call.arguments[declaredArgumentCount + position].sourceSpan,
+                      ZC_ASSERT_NONNULL(localSpan))) {
           return rejectCapturedValueCall();
         }
       }
