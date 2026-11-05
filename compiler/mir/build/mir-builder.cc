@@ -3665,39 +3665,58 @@ zc::Maybe<RecursiveFunctionProduct> buildClosureValueCallReturn(const LoweringCo
       ZC_ASSERT_NONNULL(functionReference).category != hir::HirValueCategory::Place) {
     return zc::none;
   }
-  // Explicit literal arguments and implicit captured-local arguments may not
-  // mix: the slice-1b value call passes only constants, while the captured
-  // value call passes only the captured locals.
-  bool constantArguments = false;
-  bool localArguments = false;
+  // Every indirect-call argument is either an explicit scalar constant (the
+  // declared parameter arguments of the slice-1b/mixed forms) or a place-use of
+  // one captured local (the implicit environment arguments). The mixed
+  // slice-2 form is exactly one leading constant followed by one captured
+  // local; the captured-only form passes captured locals only.
+  size_t constantArgumentCount = 0;
+  size_t localArgumentCount = 0;
   for (const auto& argument : sourceCall.arguments) {
     if (argument.value != zc::none) {
-      constantArguments = true;
+      ++constantArgumentCount;
+      // The declared parameter argument carries its published parameter key;
+      // field and comparison projections stay impossible on this edge.
+      if (argument.field != zc::none || argument.comparisonOperation != zc::none) {
+        return zc::none;
+      }
     } else if (argument.local != zc::none) {
-      localArguments = true;
+      ++localArgumentCount;
+      if (argument.parameter != zc::none || argument.field != zc::none ||
+          argument.comparisonOperation != zc::none) {
+        return zc::none;
+      }
     } else {
       return zc::none;
     }
-    if (argument.parameter != zc::none || argument.field != zc::none ||
-        argument.comparisonOperation != zc::none) {
-      return zc::none;
-    }
   }
-  if (constantArguments && localArguments) { return zc::none; }
-  if (localArguments && sourceCall.arguments.size() != capturedCount) { return zc::none; }
-  if (!localArguments && capturedCount != 0) { return zc::none; }
-  if (localArguments) {
-    for (const auto& argument : sourceCall.arguments) {
-      bool found = false;
-      for (size_t index = 0; index < capturedCount; ++index) {
-        if (capturedBindings[index]->local == ZC_ASSERT_NONNULL(argument.local) &&
-            argument.type == capturedBindings[index]->type) {
-          found = true;
-          break;
+  if (localArgumentCount != capturedCount) { return zc::none; }
+  // Mixed only when both a declared constant and a captured local are present;
+  // a constants-only non-capturing value call keeps its original edge.
+  const bool mixedArguments = constantArgumentCount != 0 && localArgumentCount != 0;
+  if (constantArgumentCount > 2) { return zc::none; }
+  if (mixedArguments &&
+      (constantArgumentCount != 1 || localArgumentCount != 1 || sourceCall.arguments.size() != 2 ||
+       sourceCall.arguments[0].value == zc::none || sourceCall.arguments[0].local != zc::none ||
+       sourceCall.arguments[1].value != zc::none || sourceCall.arguments[1].local == zc::none)) {
+    return zc::none;
+  }
+  zc::Vector<size_t> localArgumentCapturedSlots;
+  for (const auto& argument : sourceCall.arguments) {
+    if (argument.local == zc::none) { continue; }
+    bool found = false;
+    for (size_t index = 0; index < capturedCount; ++index) {
+      if (capturedBindings[index]->local == ZC_ASSERT_NONNULL(argument.local) &&
+          argument.type == capturedBindings[index]->type) {
+        for (const auto existing : localArgumentCapturedSlots) {
+          if (existing == index) { return zc::none; }
         }
+        localArgumentCapturedSlots.add(index);
+        found = true;
+        break;
       }
-      if (!found) { return zc::none; }
     }
+    if (!found) { return zc::none; }
   }
   zc::Vector<MirOperand> arguments;
   auto definition = identities.definition(declaration.definition);
@@ -3725,22 +3744,28 @@ zc::Maybe<RecursiveFunctionProduct> buildClosureValueCallReturn(const LoweringCo
       ctx.declareLocal(MirLocalKind::FunctionResult, declaration.resultType, scope,
                        ZC_ASSERT_NONNULL(sourceReturn).sourceSpan.clone());
   if (resultLocal.ordinal() != capturedCount + slotCount + 1) { return zc::none; }
-  // Fill the by-value call arguments now that MIR ids exist: either the
-  // explicit constants of the non-capturing value path or place-uses of the
-  // captured locals in canonical environment order.
-  if (localArguments) {
-    for (size_t index = 0; index < capturedCount; ++index) {
-      zc::Vector<MirProjection> argumentProjections;
-      auto operand = placeUse(proofs, copyMarker,
-                              MirPlace(capturedMirLocals[index], capturedBindings[index]->type,
-                                       zc::mv(argumentProjections), capturedBindings[index]->type));
-      if (operand == zc::none) { return zc::none; }
-      arguments.add(zc::mv(ZC_ASSERT_NONNULL(operand)));
-    }
-  } else {
-    for (const auto& argument : sourceCall.arguments) {
+  // Fill the by-value call arguments in declared-first order: explicit
+  // constants lower to constants in place; captured-local arguments lower to
+  // place-uses naming their captured MIR local.
+  for (const auto& argument : sourceCall.arguments) {
+    if (argument.value != zc::none) {
       arguments.add(MirOperand::constant(argument.type, ZC_ASSERT_NONNULL(argument.value).clone()));
+      continue;
     }
+    size_t capturedSlot = 0;
+    for (size_t index = 0; index < capturedCount; ++index) {
+      if (capturedBindings[index]->local == ZC_ASSERT_NONNULL(argument.local)) {
+        capturedSlot = index;
+        break;
+      }
+    }
+    zc::Vector<MirProjection> argumentProjections;
+    auto operand =
+        placeUse(proofs, copyMarker,
+                 MirPlace(capturedMirLocals[capturedSlot], capturedBindings[capturedSlot]->type,
+                          zc::mv(argumentProjections), capturedBindings[capturedSlot]->type));
+    if (operand == zc::none) { return zc::none; }
+    arguments.add(zc::mv(ZC_ASSERT_NONNULL(operand)));
   }
 
   // Block 1: initialize captured locals, materialize the pointer chain, then
@@ -8413,6 +8438,7 @@ zc::Maybe<RecursiveFunctionProduct> tryBuildRecursiveFunction(
     auto product = entry.fn(lctx);
     if (product != zc::none) return product;
   }
+  return zc::none;
   return zc::none;
 }
 
