@@ -1,0 +1,15 @@
+// RFC 0057 slice 2 mixed form: a closure with one declared Copy scalar
+// parameter that also captures one Copy scalar by value, whose body computes
+// one arithmetic operation over the parameter and the captured slot. It is
+// reached through a whole-local copy chain; the indirect call passes the
+// captured local as its synthetic by-value environment argument and the
+// source literal as the declared argument. The program exits 42 natively
+// through the indirect-call ABI (flagged experiment).
+fn entry() -> i32 {
+  let a: i32 = 40;
+  let f = fn(n: i32) -> i32 {
+    return n + a;
+  };
+  let g = f;
+  return g(2);
+}
