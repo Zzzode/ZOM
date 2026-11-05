@@ -8136,41 +8136,46 @@ zc::Maybe<Module> MirToLirLowering::lowerCodePointerCallModule(
   for (size_t index = 0; index < caller.locals.size(); ++index) {
     if (caller.locals[index].id.ordinal() != index + 1) { return zc::none; }
   }
-  // Local-use call arguments must name the captured locals in order;
-  // constant arguments belong to the non-capturing path. The two forms must
-  // not mix.
-  bool constantArguments = false;
-  bool localArguments = false;
+  // Local-use call arguments name the captured locals; constant arguments are
+  // the declared parameter arguments. The captured-only form passes local
+  // arguments exclusively; the mixed slice-2 form is exactly one leading
+  // constant followed by one local-use argument.
+  size_t constantArgumentCount = 0;
   for (size_t index = 0; index < pointerCall.arguments.size(); ++index) {
     const auto& argument = pointerCall.arguments[index];
     if (argument.kind() == mir::MirOperandKind::Constant) {
-      constantArguments = true;
-    } else {
-      if (argument.kind() != mir::MirOperandKind::Copy &&
-          argument.kind() != mir::MirOperandKind::Move) {
-        return zc::none;
-      }
-      localArguments = true;
+      ++constantArgumentCount;
+      continue;
+    }
+    if (argument.kind() != mir::MirOperandKind::Copy &&
+        argument.kind() != mir::MirOperandKind::Move) {
+      return zc::none;
     }
   }
-  if (constantArguments == localArguments) { return zc::none; }
-  if (localArguments && pointerCall.arguments.size() != capturedCount) { return zc::none; }
-  if (!localArguments && capturedCount != 0) { return zc::none; }
+  const size_t localArgumentCount = pointerCall.arguments.size() - constantArgumentCount;
+  // Mixed only when both a declared constant and a captured local are present;
+  // a constants-only non-capturing value call keeps its original edge.
+  const bool mixedArguments = constantArgumentCount != 0 && localArgumentCount != 0;
+  if (localArgumentCount != capturedCount) { return zc::none; }
+  if (constantArgumentCount > kMaxCallArguments) { return zc::none; }
+  if (mixedArguments && (pointerCall.arguments.size() != 2 || constantArgumentCount != 1)) {
+    return zc::none;
+  }
 
   zc::Vector<Operand> argumentOperands;
   for (size_t index = 0; index < parameterCount; ++index) {
     const auto& argument = pointerCall.arguments[index];
-    if (constantArguments) {
-      if (argument.kind() != mir::MirOperandKind::Constant ||
-          argument.constantValue().type != callee.locals[index].type) {
-        return zc::none;
-      }
+    if (argument.kind() == mir::MirOperandKind::Constant) {
+      if (argument.constantValue().type != callee.locals[index].type) { return zc::none; }
     } else {
       if (argument.place().projections().size() != 0 ||
-          argument.place().local() != capturedLocals[index].id ||
           argument.place().rootType() != callee.locals[index].type) {
         return zc::none;
       }
+      // The single local-use argument of the mixed form names the one captured
+      // local; in the captured-only form argument i names captured local i.
+      const size_t capturedIndex = mixedArguments ? 0 : index;
+      if (argument.place().local() != capturedLocals[capturedIndex].id) { return zc::none; }
     }
     auto lowered = lirOperandFor(argument, parameterCarriers[index]);
     if (lowered == zc::none) { return zc::none; }
