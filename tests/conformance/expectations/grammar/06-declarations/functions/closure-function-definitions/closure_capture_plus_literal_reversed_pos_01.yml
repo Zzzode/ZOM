@@ -1,0 +1,5 @@
+section: "§4 FunctionExpression literal-first capture operand"
+covers_rule: "functionExpression, functionBody, returnStatement, binaryExpression, integerLiteral"
+expected: "ACCEPT"
+notes:
+  - "RFC 0057 slice 2: the integer-literal-first operand ordering of a capture-plus-literal arithmetic body parses legally; operand order and capture admission are checker decisions behind --experimental-captures, never grammar ones."

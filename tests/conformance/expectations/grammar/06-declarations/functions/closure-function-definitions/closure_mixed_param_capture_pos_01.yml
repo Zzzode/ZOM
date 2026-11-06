@@ -1,0 +1,5 @@
+section: "§4 FunctionExpression declared parameter plus inferred capture"
+covers_rule: "functionExpression, functionParameter, functionBody, returnStatement, binaryExpression"
+expected: "ACCEPT"
+notes:
+  - "RFC 0057 slice 2: one declared by-value parameter and one inferred by-value scalar capture combined in an arithmetic body parse legally; mixed-form admission is a checker decision behind --experimental-captures, never a grammar one."

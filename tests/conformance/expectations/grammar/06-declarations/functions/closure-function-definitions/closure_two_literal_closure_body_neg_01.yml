@@ -1,0 +1,5 @@
+section: "§4 FunctionExpression two-literal arithmetic body"
+covers_rule: "functionExpression, functionBody, returnStatement, binaryExpression, integerLiteral"
+expected: "ACCEPT"
+notes:
+  - "RFC 0057 slice 2: a non-capturing closure returning an arithmetic binary of two integer literals parses legally; it drains semantically (ZOM4099 behind the flag) because it matches no admitted closure body shape, not because the grammar rejects it."

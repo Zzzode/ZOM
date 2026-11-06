@@ -1,0 +1,5 @@
+section: "§4 FunctionExpression declared parameter with literal operand"
+covers_rule: "functionExpression, functionParameter, functionBody, returnStatement, binaryExpression, integerLiteral"
+expected: "ACCEPT"
+notes:
+  - "RFC 0057 slice 2: a parameter-plus-literal arithmetic body without a capture parses legally; it drains semantically (ZOM4099 behind the flag) because no admitted closure body shape lowers it, not because the grammar rejects it."

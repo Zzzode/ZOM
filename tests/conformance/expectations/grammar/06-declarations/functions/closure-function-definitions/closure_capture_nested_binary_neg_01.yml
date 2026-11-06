@@ -1,0 +1,5 @@
+section: "§4 FunctionExpression nested arithmetic body"
+covers_rule: "functionExpression, functionBody, returnStatement, binaryExpression, integerLiteral"
+expected: "ACCEPT"
+notes:
+  - "RFC 0057 slice 2: a nested arithmetic binary in a closure body parses legally; the one-capture one-literal slice admits only leaf operands, so this drains semantically (ZOM4099 behind the flag), never as a grammar rejection."
