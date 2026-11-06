@@ -1,0 +1,9 @@
+// RFC 0057 slice 2: a non-capturing two-parameter expression-body lambda
+// whose sole expression is one integer arithmetic binary over both declared
+// parameters, reached through a whole-local copy chain. This needs no
+// experimental capture gate because it captures nothing.
+fn entry() -> i32 {
+  let f = (a: i32, b: i32) -> i32 => a + b;
+  let g = f;
+  return g(40, 2);
+}

@@ -1,0 +1,10 @@
+// RFC 0057 slice 2 negative: a one-parameter expression-body lambda whose
+// body combines its declared parameter with an integer literal matches no
+// admitted closure body (the parameter slice yields a bare parameter; the
+// capture-plus-literal form needs a captured identifier). The owning function
+// keeps one ZOM4099 capability diagnostic with zero incidents.
+fn entry() -> i32 {
+  let f = (n: i32) -> i32 => n + 1;
+  let g = f;
+  return g(41);
+}

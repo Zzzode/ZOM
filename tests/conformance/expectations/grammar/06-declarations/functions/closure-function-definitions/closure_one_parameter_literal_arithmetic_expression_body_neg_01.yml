@@ -1,0 +1,5 @@
+section: "§4 LambdaExpression expression body"
+covers_rule: "lambdaExpression, lambdaParameterList, lambdaExpressionBody, binaryExpression"
+expected: "ACCEPT"
+notes:
+  - "The source parses legally; it drains semantically (ZOM4099), never as a grammar rejection."
