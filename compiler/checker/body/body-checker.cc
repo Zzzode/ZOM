@@ -5408,39 +5408,64 @@ zc::Maybe<zc::Vector<AdmittedScalarCapture>> admittedScalarCaptureSet(
     const BodyCheckingInput& input, const binder::AnonymousOwnerLocalKey& closureKey,
     ast::NodeId closureNode) {
   const auto& tree = input.boundModule.tree();
+  const bool closureIsFunctionExpression =
+      tree.node(closureNode).kind == ast::SyntaxKind::FunctionExpression;
   if (!tree.contains(closureNode) ||
-      tree.node(closureNode).kind != ast::SyntaxKind::FunctionExpression) {
+      (tree.node(closureNode).kind != ast::SyntaxKind::FunctionExpression &&
+       tree.node(closureNode).kind != ast::SyntaxKind::LambdaExpression)) {
     return zc::none;
   }
   const auto& closureExpr = tree.node(closureNode);
-  // Generic parameters and an explicit capture clause are outside B2.
-  if (tree.contains(
-          ast::NodeId(closureExpr.payload.words[ast::kFunctionExpressionTypeParamsIdWord])) ||
-      tree.contains(
-          ast::NodeId(closureExpr.payload.words[ast::kFunctionExpressionCapturesIdWord])) ||
-      tree.contains(ast::NodeId(closureExpr.payload.words[ast::kFunctionExpressionRaisesTyWord]))) {
+  // Generic parameters and an explicit capture clause are outside B2. A
+  // paren-arrow lambda has no type-parameter or explicit-capture slot; its
+  // raises slot uses the lambda word.
+  if (closureIsFunctionExpression &&
+      (tree.contains(
+           ast::NodeId(closureExpr.payload.words[ast::kFunctionExpressionTypeParamsIdWord])) ||
+       tree.contains(
+           ast::NodeId(closureExpr.payload.words[ast::kFunctionExpressionCapturesIdWord])) ||
+       tree.contains(
+           ast::NodeId(closureExpr.payload.words[ast::kFunctionExpressionRaisesTyWord])))) {
     return zc::none;
   }
-  const ast::NodeId bodyNode(closureExpr.payload.words[ast::kFunctionExpressionBodyWord]);
-  if (!tree.contains(bodyNode) || tree.node(bodyNode).kind != ast::SyntaxKind::BlockStmt) {
+  if (!closureIsFunctionExpression &&
+      tree.contains(ast::NodeId(closureExpr.payload.words[ast::kLambdaExpressionRaisesTyWord]))) {
     return zc::none;
   }
-  const ast::NodeList statements{tree.node(bodyNode).payload.words[ast::kBlockStmtStmtsFirstWord],
-                                 tree.node(bodyNode).payload.words[ast::kBlockStmtStmtsSizeWord]};
-  if (!tree.contains(statements) || statements.size != 1) { return zc::none; }
-  ast::NodeId soleStatement = tree.list(statements)[0];
-  // A block statement list holds StatementListItem wrappers; unwrap one level.
-  if (tree.contains(soleStatement) &&
-      tree.node(soleStatement).kind == ast::SyntaxKind::StatementListItem) {
-    soleStatement =
-        ast::NodeId(tree.node(soleStatement).payload.words[ast::kStatementListItemItemWord]);
+  ast::NodeId valueNode;
+  if (closureIsFunctionExpression) {
+    const ast::NodeId bodyNode(closureExpr.payload.words[ast::kFunctionExpressionBodyWord]);
+    if (!tree.contains(bodyNode) || tree.node(bodyNode).kind != ast::SyntaxKind::BlockStmt) {
+      return zc::none;
+    }
+    const ast::NodeList statements{tree.node(bodyNode).payload.words[ast::kBlockStmtStmtsFirstWord],
+                                   tree.node(bodyNode).payload.words[ast::kBlockStmtStmtsSizeWord]};
+    if (!tree.contains(statements) || statements.size != 1) { return zc::none; }
+    ast::NodeId soleStatement = tree.list(statements)[0];
+    // A block statement list holds StatementListItem wrappers; unwrap one level.
+    if (tree.contains(soleStatement) &&
+        tree.node(soleStatement).kind == ast::SyntaxKind::StatementListItem) {
+      soleStatement =
+          ast::NodeId(tree.node(soleStatement).payload.words[ast::kStatementListItemItemWord]);
+    }
+    if (!tree.contains(soleStatement) ||
+        tree.node(soleStatement).kind != ast::SyntaxKind::ReturnStmt) {
+      return zc::none;
+    }
+    valueNode = ast::NodeId(tree.node(soleStatement).payload.words[ast::kReturnStmtValueWord]);
+    if (!tree.contains(valueNode)) { return zc::none; }
+  } else {
+    // An expression-body paren-arrow lambda carries its sole yield in the
+    // expression-body word with no block body word. The slice-2 expr-body
+    // capture form yields one captured identifier directly; a binary
+    // expression body stays on the block-body-only arithmetic slice.
+    const ast::NodeId lambdaBlock(closureExpr.payload.words[ast::kLambdaExpressionBodyWord]);
+    valueNode = ast::NodeId(closureExpr.payload.words[ast::kLambdaExpressionExprBodyWord]);
+    if (tree.contains(lambdaBlock) || !tree.contains(valueNode) ||
+        tree.node(valueNode).kind != ast::SyntaxKind::IdentExpr) {
+      return zc::none;
+    }
   }
-  if (!tree.contains(soleStatement) ||
-      tree.node(soleStatement).kind != ast::SyntaxKind::ReturnStmt) {
-    return zc::none;
-  }
-  const ast::NodeId valueNode(tree.node(soleStatement).payload.words[ast::kReturnStmtValueWord]);
-  if (!tree.contains(valueNode)) { return zc::none; }
   // Resolve the closure definition and read its published callable signature
   // before classifying the body leaves so a leaf naming the closure's own
   // parameter is distinguishable from a capture.
