@@ -1,6 +1,6 @@
 {
   "corpusRoot": "tests/conformance/corpus",
-  "count": 1114,
+  "count": 1118,
   "irChannel": false,
   "outputs": {
     "02-lexical/bigint_suffix_neg_01.zom": {
@@ -2595,6 +2595,10 @@
       "exitCode": 1,
       "sha256": "dc31d050f7e4803b5e5afa485bd0942901f8f1a0380daf24b3914b44cb0db89e"
     },
+    "06-declarations/functions/closure-function-definitions/closure_one_parameter_literal_arithmetic_expression_body_neg_01.zom": {
+      "exitCode": 1,
+      "sha256": "462feace55a86662c75e7e1b22884baa6f9c9cb8f7cf3a267ffaa2dc3cd625f5"
+    },
     "06-declarations/functions/closure-function-definitions/closure_parameter_capability_neg_01.zom": {
       "exitCode": 1,
       "sha256": "32a6557d6d8a8f82fe5f44f24ff348d2f3510ab371fd9b15792c83056902edb5"
@@ -2603,6 +2607,10 @@
       "exitCode": 1,
       "sha256": "7e80f6e15960f179755b5963ab1c5a0e90d3b3e86e6c33687b3fcac42d837e03"
     },
+    "06-declarations/functions/closure-function-definitions/closure_three_parameter_arithmetic_expression_body_neg_01.zom": {
+      "exitCode": 1,
+      "sha256": "92045c668a1f90210b2331b3ccb5935899f45de27d586478892991014a78849c"
+    },
     "06-declarations/functions/closure-function-definitions/closure_three_scalar_capture_neg_01.zom": {
       "exitCode": 1,
       "sha256": "4003fb880b81badac8fa5cd15923a5deb1fb4d1ee4e2effb1c49e05ea644172a"
@@ -2610,6 +2618,10 @@
     "06-declarations/functions/closure-function-definitions/closure_two_literal_closure_body_neg_01.zom": {
       "exitCode": 1,
       "sha256": "abe455d54f8fd952317a4174fbbfc56d2413f0e6244296eae4c7345e51e5ac1f"
+    },
+    "06-declarations/functions/closure-function-definitions/closure_two_parameter_same_operand_arithmetic_neg_01.zom": {
+      "exitCode": 1,
+      "sha256": "52faf3efb775a9b842b275b621b2e225da1274a0c4791f4d9dbde4cb4410b763"
     },
     "06-declarations/functions/closure-function-definitions/closure_two_scalar_capture_pos_01.zom": {
       "exitCode": 1,
@@ -2622,6 +2634,10 @@
     "06-declarations/functions/closure-function-definitions/raises.zom": {
       "exitCode": 1,
       "sha256": "42b9c25ce0bfa14be767cc7251c1f504ac2bbc72bff54ae442df07f3ab492aa0"
+    },
+    "06-declarations/functions/closure-function-definitions/two_parameter_arithmetic_expression_body_pos_01.zom": {
+      "exitCode": 0,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     "06-declarations/functions/function-definitions/default-params.zom": {
       "exitCode": 1,
