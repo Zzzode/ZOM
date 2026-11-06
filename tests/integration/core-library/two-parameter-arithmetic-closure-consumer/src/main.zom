@@ -1,0 +1,12 @@
+// RFC 0057 slice 2 two-parameter arithmetic closure: a non-capturing
+// expression-body paren-arrow lambda with two declared by-value i32 parameters
+// whose body is one integer arithmetic operation over both parameters. It is
+// reached through a whole-local copy chain; the indirect call passes the two
+// source literal arguments. The program exits 42 (40 plus 2) through the
+// indirect-call ABI.
+fn entry() -> i32 {
+  let f = (a: i32, b: i32) -> i32 => a + b;
+  let g = f;
+  return g(40, 2);
+}
+
