@@ -1,0 +1,12 @@
+// RFC 0057 slice 2 mixed form: a block-body closure with one declared by-value
+// i32 parameter that also captures one initialized read-only i32 local by
+// value, combining them in one integer arithmetic operation. The closure is
+// reached through a whole-local copy chain. Admitted only behind the
+// default-off --experimental-captures gate; without it this source keeps the
+// ZOM4099 capability drain.
+fn entry() -> i32 {
+  let a: i32 = 40;
+  let f = fn (n: i32) -> i32 { return n + a; };
+  let g = f;
+  return g(2);
+}

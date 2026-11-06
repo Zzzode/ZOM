@@ -1,0 +1,9 @@
+// RFC 0057 slice 2 capture-plus-literal form with the literal operand first
+// and the captured identifier second. Both operand orderings admit the same
+// one-capture one-literal arithmetic body behind --experimental-captures.
+fn entry() -> i32 {
+  let a: i32 = 41;
+  let f = fn () -> i32 { return 1 + a; };
+  let g = f;
+  return g();
+}

@@ -1,0 +1,12 @@
+// RFC 0057 slice 2 negative: the capture-plus-literal form admits exactly one
+// captured identifier and one literal as the two direct operands of one
+// binary. A nested binary (`a + 1 + 2`) has another binary expression where a
+// leaf operand must be, so it stays outside the slice. Even with
+// --experimental-captures the owning function keeps one ZOM4099 capability
+// diagnostic with zero incidents.
+fn entry() -> i32 {
+  let a: i32 = 40;
+  let f = fn () -> i32 { return a + 1 + 2; };
+  let g = f;
+  return g();
+}

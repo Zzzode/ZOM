@@ -1,0 +1,12 @@
+// RFC 0057 slice 2 capture-plus-literal form: a zero-parameter block-body
+// closure captures one initialized read-only i32 local by value and combines
+// it with an integer literal in one arithmetic operation, identifier operand
+// first. Reached through a whole-local copy chain. Admitted only behind the
+// default-off --experimental-captures gate; without it this source keeps the
+// ZOM4099 capability drain.
+fn entry() -> i32 {
+  let a: i32 = 41;
+  let f = fn () -> i32 { return a + 1; };
+  let g = f;
+  return g();
+}

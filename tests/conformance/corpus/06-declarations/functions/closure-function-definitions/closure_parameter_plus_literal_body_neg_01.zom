@@ -1,0 +1,10 @@
+// RFC 0057 slice 2 negative: a one-parameter non-capturing closure whose body
+// combines its declared parameter with an integer literal is outside both the
+// parameter-reference slice (which admits only a bare parameter return) and
+// the mixed slice (whose second operand must name a captured identifier, not a
+// literal). Even with --experimental-captures the owning function keeps one
+// ZOM4099 capability diagnostic with zero incidents.
+fn entry() -> i32 {
+  let f = fn (n: i32) -> i32 { return n + 1; };
+  return f(2);
+}

@@ -1,0 +1,8 @@
+// RUN: cd %corpus && %zomc compile --check --experimental-captures 06-declarations/functions/closure-function-definitions/closure_capture_plus_literal_reversed_pos_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// RFC 0057 slice 2 positive: the literal-first operand ordering of the
+// capture-plus-literal form admits the same body. The compiler exits 0 and
+// emits no diagnostic.
+
+// CHECK-NOT: Error

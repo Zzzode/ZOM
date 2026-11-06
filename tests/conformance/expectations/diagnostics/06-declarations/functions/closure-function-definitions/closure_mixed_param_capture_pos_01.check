@@ -1,0 +1,9 @@
+// RUN: cd %corpus && %zomc compile --check --experimental-captures 06-declarations/functions/closure-function-definitions/closure_mixed_param_capture_pos_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// RFC 0057 slice 2 positive: with --experimental-captures the one declared
+// by-value i32 parameter plus one by-value Copy scalar capture are admitted in
+// one arithmetic body, reached through a copy chain. The compiler exits 0 and
+// emits no diagnostic.
+
+// CHECK-NOT: Error

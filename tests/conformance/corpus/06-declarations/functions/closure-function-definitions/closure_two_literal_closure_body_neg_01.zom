@@ -1,0 +1,10 @@
+// RFC 0057 slice 2 negative: a non-capturing closure whose body is an
+// arithmetic binary over two integer literals names no parameter and captures
+// nothing, so it matches neither the scalar-literal return shape nor the
+// capture forms. Even with --experimental-captures the owning function keeps
+// one ZOM4099 capability diagnostic with zero incidents.
+fn entry() -> i32 {
+  let f = fn () -> i32 { return 1 + 2; };
+  let g = f;
+  return g();
+}
