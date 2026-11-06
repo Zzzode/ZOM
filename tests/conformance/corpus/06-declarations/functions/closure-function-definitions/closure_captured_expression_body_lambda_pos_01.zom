@@ -1,0 +1,11 @@
+// RFC 0057 slice 2 expr-body form: a zero-parameter paren-arrow lambda with no
+// block or return that captures one initialized read-only i32 local by value
+// and yields the captured slot directly. Reached through a whole-local copy
+// chain. Admitted only behind the default-off --experimental-captures gate;
+// without it this source keeps the ZOM4099 capability drain.
+fn entry() -> i32 {
+  let a: i32 = 42;
+  let f = () -> i32 => a;
+  let g = f;
+  return g();
+}

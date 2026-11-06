@@ -1,0 +1,10 @@
+// RUN: cd %corpus && %zomc compile --check --experimental-captures 06-declarations/functions/closure-function-definitions/closure_captured_expression_body_lambda_pos_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// RFC 0057 slice 2 positive: with --experimental-captures a zero-parameter
+// expression-body paren-arrow lambda that captures one Copy scalar by value
+// and yields it directly (reached through a copy chain) lowers through the
+// full checker/HIR/MIR/LIR pipeline. The compiler exits 0 and emits no
+// diagnostic.
+
+// CHECK-NOT: Error

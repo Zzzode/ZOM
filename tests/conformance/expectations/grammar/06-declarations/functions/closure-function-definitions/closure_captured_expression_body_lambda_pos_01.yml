@@ -1,0 +1,5 @@
+section: "§4 LambdaExpression expression body inferred capture"
+covers_rule: "lambdaExpression, lambdaExpressionBody, identifier"
+expected: "ACCEPT"
+notes:
+  - "RFC 0057 slice 2: a zero-parameter expression-body lambda yielding one inferred by-value capture directly parses legally; capture admission is a checker decision behind --experimental-captures, never a grammar one."

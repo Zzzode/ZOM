@@ -1,0 +1,5 @@
+section: "§4 LambdaExpression expression body binary operands"
+covers_rule: "lambdaExpression, lambdaExpressionBody, binaryExpression, identifier"
+expected: "ACCEPT"
+notes:
+  - "RFC 0057 slice 2: a two-capture arithmetic expression body parses legally; it drains semantically (ZOM4099 behind the flag) because arithmetic capture bodies stay on the block-body spelling, not because the grammar rejects it."
