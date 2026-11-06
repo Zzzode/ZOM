@@ -1251,6 +1251,43 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           closureCaptures && closureParameterCount == 1 && orderedCaptureFacts.size() == 1 &&
           earlyCallable.receiver == zc::none && earlyCallable.raises == zc::none &&
           earlyCallable.abi == zc::none;
+      // RFC 0057 slice 2 two-parameter arithmetic closure: a non-capturing
+      // closure with two declared parameters whose sole body value is one
+      // arithmetic binary with two identifier operands. Both operands are
+      // reconciled to distinct declared parameters during source-shape
+      // validation; the closure occupies the binary six-node stride with two
+      // published-parameter references.
+      bool parameterArithmeticClosure = false;
+      if (parameterClosure && closureParameterCount == 2) {
+        ast::NodeId parameterArithmeticValue;
+        if (closureIsFunctionExpression) {
+          auto probeShape =
+              functionReturnShape(closureTree, closureTree.node(closureDefinition.node));
+          if (probeShape != zc::none) {
+            parameterArithmeticValue = ZC_ASSERT_NONNULL(probeShape).value;
+          }
+        } else {
+          const ast::NodeId probeBlock(closureTree.node(closureDefinition.node)
+                                           .payload.words[ast::kLambdaExpressionBodyWord]);
+          if (!closureTree.contains(probeBlock)) {
+            parameterArithmeticValue =
+                ast::NodeId(closureTree.node(closureDefinition.node)
+                                .payload.words[ast::kLambdaExpressionExprBodyWord]);
+          }
+        }
+        if (closureTree.contains(parameterArithmeticValue) &&
+            closureTree.node(parameterArithmeticValue).kind == ast::SyntaxKind::BinaryExpr) {
+          const ast::NodeId probeLeft(
+              closureTree.node(parameterArithmeticValue).payload.words[ast::kBinaryExprLhsWord]);
+          const ast::NodeId probeRight(
+              closureTree.node(parameterArithmeticValue).payload.words[ast::kBinaryExprRhsWord]);
+          if (closureTree.contains(probeLeft) && closureTree.contains(probeRight) &&
+              closureTree.node(probeLeft).kind == ast::SyntaxKind::IdentExpr &&
+              closureTree.node(probeRight).kind == ast::SyntaxKind::IdentExpr) {
+            parameterArithmeticClosure = true;
+          }
+        }
+      }
       if (!closureCaptures && closureParameterCount != 0 && !parameterClosure) {
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                             ir::IrFailureKind::InvalidFact, module, registries,
@@ -1307,7 +1344,9 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           }
         }
       }
-      if (mixedParameterCapture || captureLiteralArithmetic) { binaryClosure = true; }
+      if (mixedParameterCapture || captureLiteralArithmetic || parameterArithmeticClosure) {
+        binaryClosure = true;
+      }
       // A one-capture closure occupies four source-preorder node ids (function,
       // body, return, parameter reference); a two-capture closure occupies six
       // (function, body, left parameter reference, right parameter reference,
@@ -1561,8 +1600,28 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           if (parameterClosure) {
             // RFC 0057 slice 1b: the sole statement returns the parameter
             // identifier; the binding reconciliation below proves it names the
-            // closure's declared parameter.
-            if (closureTree.node(closureSource.value).kind != ast::SyntaxKind::IdentExpr) {
+            // closure's declared parameter. The slice-2 two-parameter
+            // arithmetic form instead returns one binary whose two identifier
+            // operands name two distinct declared parameters.
+            if (parameterArithmeticClosure) {
+              if (closureTree.node(closureSource.value).kind != ast::SyntaxKind::BinaryExpr) {
+                closureSourceValueValid = false;
+              } else {
+                const ast::NodeId binaryLeft(
+                    closureTree.node(closureSource.value).payload.words[ast::kBinaryExprLhsWord]);
+                const ast::NodeId binaryRight(
+                    closureTree.node(closureSource.value).payload.words[ast::kBinaryExprRhsWord]);
+                if (!closureTree.contains(binaryLeft) ||
+                    closureTree.node(binaryLeft).kind != ast::SyntaxKind::IdentExpr ||
+                    !closureTree.contains(binaryRight) ||
+                    closureTree.node(binaryRight).kind != ast::SyntaxKind::IdentExpr) {
+                  closureSourceValueValid = false;
+                } else {
+                  sourceLeafNodes.add(binaryLeft);
+                  sourceLeafNodes.add(binaryRight);
+                }
+              }
+            } else if (closureTree.node(closureSource.value).kind != ast::SyntaxKind::IdentExpr) {
               closureSourceValueValid = false;
             }
           } else if (!closureCaptures) {
@@ -1671,13 +1730,29 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             }
           }
         }
-        if (closureSourceValueValid && parameterClosure) {
+        if (closureSourceValueValid && parameterClosure && !parameterArithmeticClosure) {
           // The return identifier must materialize to the owner-local
           // CallableParameter binding at one of the closure's declared
           // parameter nodes.
           if (!namesOneDeclaredParameter(closureSource.value, ast::kFunctionExpressionParamsIdWord,
                                          returnedClosureParameterIndex)) {
             closureSourceValueValid = false;
+          }
+        }
+        if (closureSourceValueValid && parameterArithmeticClosure) {
+          // Both binary operands must materialize to two distinct declared
+          // parameters of this block-body function expression.
+          zc::Vector<size_t> parameterIndices;
+          for (const ast::NodeId leaf : sourceLeafNodes) {
+            size_t leafIndex = 0;
+            if (!namesOneDeclaredParameter(leaf, ast::kFunctionExpressionParamsIdWord, leafIndex)) {
+              closureSourceValueValid = false;
+              break;
+            }
+            for (const auto existing : parameterIndices) {
+              if (existing == leafIndex) { closureSourceValueValid = false; }
+            }
+            parameterIndices.add(leafIndex);
           }
         }
         if (!closureSourceValueValid) {
@@ -1709,7 +1784,9 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         const bool lambdaYieldsIdentifier = parameterClosure || closureCaptures;
         const bool lambdaBodyShapeValid =
             closureTree.contains(lambdaBody) && (!closureTree.contains(lambdaBlock)) &&
-            (lambdaYieldsIdentifier
+            (parameterArithmeticClosure
+                 ? closureTree.node(lambdaBody).kind == ast::SyntaxKind::BinaryExpr
+             : lambdaYieldsIdentifier
                  ? closureTree.node(lambdaBody).kind == ast::SyntaxKind::IdentExpr
                  : isScalarLiteral(closureTree.node(lambdaBody).kind));
         if (!lambdaBodyShapeValid) {
@@ -1717,12 +1794,45 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                               ir::IrFailureKind::InvalidFact, module, registries,
                                               index + 1);
         }
-        if (parameterClosure &&
+        if (parameterClosure && !parameterArithmeticClosure &&
             !namesOneDeclaredParameter(lambdaBody, ast::kLambdaExpressionParamsIdWord,
                                        returnedClosureParameterIndex)) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                               ir::IrFailureKind::InvalidFact, module, registries,
                                               index + 1);
+        }
+        if (parameterArithmeticClosure) {
+          // The two binary operands must name two distinct declared parameters
+          // of this expression-body lambda.
+          const ast::NodeId lambdaLeft(
+              closureTree.node(lambdaBody).payload.words[ast::kBinaryExprLhsWord]);
+          const ast::NodeId lambdaRight(
+              closureTree.node(lambdaBody).payload.words[ast::kBinaryExprRhsWord]);
+          if (!closureTree.contains(lambdaLeft) ||
+              closureTree.node(lambdaLeft).kind != ast::SyntaxKind::IdentExpr ||
+              !closureTree.contains(lambdaRight) ||
+              closureTree.node(lambdaRight).kind != ast::SyntaxKind::IdentExpr) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          zc::Vector<size_t> lambdaParameterIndices;
+          for (const ast::NodeId leaf : {lambdaLeft, lambdaRight}) {
+            size_t leafIndex = 0;
+            if (!namesOneDeclaredParameter(leaf, ast::kLambdaExpressionParamsIdWord, leafIndex)) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::InvalidFact, module,
+                                                  registries, index + 1);
+            }
+            for (const auto existing : lambdaParameterIndices) {
+              if (existing == leafIndex) {
+                return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                    ir::IrFailureKind::InvalidFact, module,
+                                                    registries, index + 1);
+              }
+            }
+            lambdaParameterIndices.add(leafIndex);
+          }
         }
         if (closureCaptures) {
           // A capturing expression-body lambda yields exactly one capture: the
@@ -1878,6 +1988,20 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         }
         auto expectedKeyForLeaf =
             [&](ast::NodeId leaf) -> zc::Maybe<identity::CallableParameterKey> {
+          if (parameterArithmeticClosure) {
+            // Each operand names one of the closure's two published declared
+            // parameters; resolve its ordinary index and return that
+            // parameter's content-addressed key.
+            const uint32_t parameterListWord = closureIsFunctionExpression
+                                                   ? ast::kFunctionExpressionParamsIdWord
+                                                   : ast::kLambdaExpressionParamsIdWord;
+            size_t declaredLeafIndex = 0;
+            if (namesOneDeclaredParameter(leaf, parameterListWord, declaredLeafIndex) &&
+                declaredLeafIndex < earlyCallable.parameters.size()) {
+              return earlyCallable.parameters[declaredLeafIndex].parameter.clone();
+            }
+            return zc::none;
+          }
           if (mixedParameterCapture) {
             size_t declaredLeafIndex = 0;
             if (namesOneDeclaredParameter(leaf, ast::kFunctionExpressionParamsIdWord,
