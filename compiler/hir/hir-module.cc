@@ -1192,9 +1192,15 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       const bool closureCaptures = orderedCaptureFacts.size() != 0;
       bool binaryClosure = orderedCaptureFacts.size() == 2;
       for (const auto* closureCaptureFact : orderedCaptureFacts) {
+        // Copy captures are legal on both the block-body function-expression
+        // spelling and the expression-body paren-arrow lambda (the latter only
+        // for the bounded expression-body slice); source-shape reconciliation
+        // below constrains the actual body form.
         if (closureCaptureFact->mode != checker::checked::CaptureMode::Copy ||
             closureCaptureFact->origin != checker::checked::CaptureOrigin::Inferred ||
-            !closureIsFunctionExpression || function.linkage != HirLinkage::Internal) {
+            (!closureIsFunctionExpression &&
+             closureTree.node(closureDefinition.node).kind != ast::SyntaxKind::LambdaExpression) ||
+            function.linkage != HirLinkage::Internal) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                               ir::IrFailureKind::InvalidFact, module, registries,
                                               index + 1);
@@ -1700,10 +1706,12 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             closureTree.node(closureDefinition.node).payload.words[ast::kLambdaExpressionBodyWord]);
         const ast::NodeId lambdaBody(closureTree.node(closureDefinition.node)
                                          .payload.words[ast::kLambdaExpressionExprBodyWord]);
+        const bool lambdaYieldsIdentifier = parameterClosure || closureCaptures;
         const bool lambdaBodyShapeValid =
             closureTree.contains(lambdaBody) && (!closureTree.contains(lambdaBlock)) &&
-            (parameterClosure ? closureTree.node(lambdaBody).kind == ast::SyntaxKind::IdentExpr
-                              : isScalarLiteral(closureTree.node(lambdaBody).kind));
+            (lambdaYieldsIdentifier
+                 ? closureTree.node(lambdaBody).kind == ast::SyntaxKind::IdentExpr
+                 : isScalarLiteral(closureTree.node(lambdaBody).kind));
         if (!lambdaBodyShapeValid) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                               ir::IrFailureKind::InvalidFact, module, registries,
@@ -1715,6 +1723,17 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                               ir::IrFailureKind::InvalidFact, module, registries,
                                               index + 1);
+        }
+        if (closureCaptures) {
+          // A capturing expression-body lambda yields exactly one capture: the
+          // sole identifier must be the one canonical capture place node. The
+          // non-binary record reconciliation below recomputes its environment
+          // parameter key.
+          if (orderedCaptureFacts.size() != 1 || orderedCaptureFacts[0]->place.node != lambdaBody) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
         }
         auto lambdaValueSpan = bound.parsedModule().spanFor(closureTree.node(lambdaBody).range);
         if (lambdaValueSpan == zc::none) {
@@ -15165,8 +15184,10 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           !sourceTree.contains(source.closureAliasPattern) ||
           sourceTree.node(source.closureAliasPattern).kind != ast::SyntaxKind::IdentifierPattern ||
           !sourceTree.contains(source.closureAliasInitializer) ||
-          sourceTree.node(source.closureAliasInitializer).kind !=
-              ast::SyntaxKind::FunctionExpression) {
+          (sourceTree.node(source.closureAliasInitializer).kind !=
+               ast::SyntaxKind::FunctionExpression &&
+           sourceTree.node(source.closureAliasInitializer).kind !=
+               ast::SyntaxKind::LambdaExpression)) {
         return rejectCapturedValueCall();
       }
       zc::Vector<binder::OwnerLocalBindingId> sourceLeadingBindings;

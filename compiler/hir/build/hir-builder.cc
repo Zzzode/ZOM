@@ -13904,9 +13904,14 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       const bool isCapturingClosure = orderedCaptureFacts.size() != 0;
       if (orderedCaptureFacts.size() > 2) { return rejectClosureCapability(); }
       for (const auto* captureFact : orderedCaptureFacts) {
+        // Copy captures are legal on both spellings; the block-body
+        // function-expression and, for the bounded expression-body slice, the
+        // paren-arrow lambda. Source-shape reconciliation below constrains the
+        // actual body form per spelling.
         if (captureFact->mode != checker::checked::CaptureMode::Copy ||
             captureFact->origin != checker::checked::CaptureOrigin::Inferred ||
-            captureFact->capturedType != closureCallable.success || !closureIsFunctionExpression) {
+            captureFact->capturedType != closureCallable.success ||
+            (!closureIsFunctionExpression && !closureIsExpressionLambda)) {
           return rejectClosureCapability();
         }
       }
@@ -13949,7 +13954,31 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       identity::SourceSpan closureBodySpan = closure.source.clone();
       identity::SourceSpan closureReturnSpan = closure.source.clone();
       identity::SourceSpan closureValueSpan = closure.source.clone();
-      if (isCapturingClosure) {
+      if (isCapturingClosure && !closureIsFunctionExpression) {
+        // Capturing expression-body paren-arrow lambda: it has zero declared
+        // parameters and one Copy capture, and its sole expression yields the
+        // captured identifier directly with no source block or return. The
+        // mixed parameter form and arithmetic expression bodies stay on the
+        // block-body `fn` slice. The body/return anchors stay sentinel and
+        // their spans reuse the closure source span.
+        if (mixedParameterCapture || orderedCaptureFacts.size() != 1) {
+          return rejectClosureCapability();
+        }
+        const ast::NodeId lambdaBlock(
+            closureTree.node(closure.node).payload.words[ast::kLambdaExpressionBodyWord]);
+        const ast::NodeId lambdaBody(
+            closureTree.node(closure.node).payload.words[ast::kLambdaExpressionExprBodyWord]);
+        if (closureTree.contains(lambdaBlock) || !closureTree.contains(lambdaBody) ||
+            closureTree.node(lambdaBody).kind != ast::SyntaxKind::IdentExpr ||
+            orderedCaptureFacts[0]->place.node != lambdaBody) {
+          return rejectClosureCapability();
+        }
+        auto lambdaValueSpan = bound.parsedModule().spanFor(closureTree.node(lambdaBody).range);
+        if (lambdaValueSpan == zc::none) { return rejectClosureCapability(); }
+        capturingLeaves.add(CapturingLeaf{lambdaBody, 0, /*declaredParameter=*/false});
+        closureValue = lambdaBody;
+        closureValueSpan = ZC_ASSERT_NONNULL(lambdaValueSpan).clone();
+      } else if (isCapturingClosure) {
         // Capturing form: a block-body `fn` whose sole statement returns either
         // the captured owner-local identifier (one capture) or one integer
         // arithmetic binary whose two leaves are the captured identifiers (two

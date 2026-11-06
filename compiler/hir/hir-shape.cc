@@ -3045,7 +3045,8 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
         capturedLocalShapes.add(
             FunctionReturnShape::CapturedScalarLocal{letNode, pattern, initializer});
       } else {
-        if (tree.node(initializer).kind != ast::SyntaxKind::FunctionExpression) {
+        if (tree.node(initializer).kind != ast::SyntaxKind::FunctionExpression &&
+            tree.node(initializer).kind != ast::SyntaxKind::LambdaExpression) {
           structureMatches = false;
           break;
         }
@@ -3124,7 +3125,8 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
         structureMatches = false;
         break;
       }
-      if (tree.node(initializer).kind == ast::SyntaxKind::FunctionExpression) {
+      if (tree.node(initializer).kind == ast::SyntaxKind::FunctionExpression ||
+          tree.node(initializer).kind == ast::SyntaxKind::LambdaExpression) {
         capturedOriginLet = letNode;
         capturedOriginPattern = pattern;
         capturedOriginInitializer = initializer;
@@ -3217,9 +3219,12 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
           }
         }
         if (sourceArgumentsMatch) {
+          const uint32_t originParamsWord =
+              tree.node(capturedOriginInitializer).kind == ast::SyntaxKind::LambdaExpression
+                  ? ast::kLambdaExpressionParamsIdWord
+                  : ast::kFunctionExpressionParamsIdWord;
           const ast::NodeId originParameterList(
-              tree.node(capturedOriginInitializer)
-                  .payload.words[ast::kFunctionExpressionParamsIdWord]);
+              tree.node(capturedOriginInitializer).payload.words[originParamsWord]);
           if (!tree.contains(originParameterList) ||
               tree.node(originParameterList).kind != ast::SyntaxKind::FunctionParameterList) {
             sourceArgumentsMatch = false;
