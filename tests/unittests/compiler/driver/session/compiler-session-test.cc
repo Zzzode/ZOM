@@ -1303,6 +1303,48 @@ ZC_TEST("CompilerSessionTest.CapturedLocalPlusLiteralArithmeticClosureLowersToHi
   ZC_EXPECT(session->getOwnershipCheckedMirModules()[0].builtMir().functions().size() == 2);
 }
 
+ZC_TEST("CompilerSessionTest.CapturedExpressionBodyLambdaLowersToHirAndMir") {
+  // RFC 0057 slice 2 expr-body form (flagged): a zero-parameter paren-arrow
+  // lambda with no block or return that captures one Copy scalar by value and
+  // yields the captured slot directly (`() -> i32 => a`), reached through a
+  // whole-local copy chain (`let g = f; g()`). The caller passes no declared
+  // argument and the captured local is the sole synthetic by-value
+  // environment argument; the closure function carries one environment
+  // parameter and returns it with no body binary. HIR and MIR publish with
+  // zero diagnostics and zero incidents.
+  auto session = packageSession(
+      "fn entry() -> i32 { let a: i32 = 42; "
+      "let f = () -> i32 => a; let g = f; return g(); }\n"_zc,
+      {}, true, /*experimentalCaptures=*/true);
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(session->checkSources());
+  ZC_EXPECT(!session->hasDiagnosticErrors());
+  ZC_EXPECT(session->getIncidents().empty());
+  ZC_REQUIRE(session->getVerifiedHirModules().size() == 1);
+  const auto& hir = session->getVerifiedHirModules()[0];
+  ZC_EXPECT(hir.functions().size() == 2);
+  ZC_EXPECT(hir.closureAddresses().size() == 1);
+  ZC_EXPECT(hir.indirectCalls().size() == 1);
+  // An identity expr body has no primitive binary operation.
+  ZC_EXPECT(hir.primitiveBinaryOperations().size() == 0);
+  const auto& indirectCall = hir.indirectCalls()[0];
+  ZC_EXPECT(indirectCall.arguments.size() == 1);
+  ZC_EXPECT(indirectCall.arguments[0].local != zc::none);
+  ZC_EXPECT(indirectCall.arguments[0].value == zc::none);
+  ZC_EXPECT(indirectCall.callee == hir.closureAddresses()[0].closure);
+  size_t closureParameterTotal = 0;
+  for (const auto& function : hir.functions()) {
+    closureParameterTotal += function.parameters.size();
+  }
+  // The entry has no parameters and the lambda carries its one environment
+  // parameter.
+  ZC_EXPECT(closureParameterTotal == 1);
+  ZC_REQUIRE(session->getOwnershipCheckedMirModules().size() == 1);
+  ZC_EXPECT(session->getOwnershipCheckedMirModules()[0].builtMir().functions().size() == 2);
+}
+
 ZC_TEST("CompilerSessionTest.ReferenceParameterClosureKeepsCheckerCapabilityDrain") {
   // RFC 0057 slice 1b boundary: a reference-typed closure parameter needs the
   // reference-call ABI of a later slice. The closure publishes no signature,

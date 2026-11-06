@@ -1,0 +1,12 @@
+// RFC 0057 slice 2 expr-body form: a zero-parameter paren-arrow lambda with no
+// block or return that captures one Copy scalar by value and yields the
+// captured slot directly. It is reached through a whole-local copy chain; the
+// indirect call passes the captured local as its sole synthetic by-value
+// environment argument. The program exits 42 through the indirect-call ABI
+// (flagged experiment).
+fn entry() -> i32 {
+  let a: i32 = 42;
+  let f = () -> i32 => a;
+  let g = f;
+  return g();
+}
