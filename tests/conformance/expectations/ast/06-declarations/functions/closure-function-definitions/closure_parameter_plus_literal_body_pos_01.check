@@ -1,0 +1,71 @@
+// RUN: %zomc compile --dump-ast %corpus/06-declarations/functions/closure-function-definitions/closure_parameter_plus_literal_body_pos_01.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #27 @6:1..10:1 file_name="closure_parameter_plus_literal_body_pos_01.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #26 @6:1..9:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #25 @6:1..9:2 name="entry"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #1 @6:9..6:11 nparams=0
+// CHECK-NEXT:               params: []
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty:
+// CHECK-NEXT:             PredefinedTypeExpr #2 @6:15..6:18 kind=I32
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #24 @6:19..9:2
+// CHECK-NEXT:               stmts:
+// CHECK-NEXT:                 StatementListItem #18 @7:3..7:48
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     LetStmt #17 @7:3..7:48 kind=Let
+// CHECK-NEXT:                       declarations:
+// CHECK-NEXT:                         VariableDeclaratorList #16 @7:7..7:47 n_decls=1
+// CHECK-NEXT:                           decls:
+// CHECK-NEXT:                             VariableDeclarator #15 @7:7..7:47
+// CHECK-NEXT:                               pattern:
+// CHECK-NEXT:                                 IdentifierPattern #3 @7:7..7:8 name="f"
+// CHECK-NEXT:                                   ty: null
+// CHECK-NEXT:                               ty: null
+// CHECK-NEXT:                               init:
+// CHECK-NEXT:                                 FunctionExpression #14 @7:11..7:47
+// CHECK-NEXT:                                   params_id:
+// CHECK-NEXT:                                     FunctionParameterList #6 @7:14..7:22 nparams=1
+// CHECK-NEXT:                                       params:
+// CHECK-NEXT:                                         FunctionParameterDecl #5 @7:15..7:21 name="n"
+// CHECK-NEXT:                                           ty:
+// CHECK-NEXT:                                             PredefinedTypeExpr #4 @7:18..7:21 kind=I32
+// CHECK-NEXT:                                           default_: null
+// CHECK-NEXT:                                           attrs: null
+// CHECK-NEXT:                                   type_params_id: null
+// CHECK-NEXT:                                   captures_id: null
+// CHECK-NEXT:                                   ret_ty:
+// CHECK-NEXT:                                     PredefinedTypeExpr #7 @7:26..7:29 kind=I32
+// CHECK-NEXT:                                   raises_ty: null
+// CHECK-NEXT:                                   body:
+// CHECK-NEXT:                                     BlockStmt #13 @7:30..7:47
+// CHECK-NEXT:                                       stmts:
+// CHECK-NEXT:                                         StatementListItem #12 @7:32..7:45
+// CHECK-NEXT:                                           item:
+// CHECK-NEXT:                                             ReturnStmt #11 @7:32..7:45
+// CHECK-NEXT:                                               value:
+// CHECK-NEXT:                                                 BinaryExpr #10 @7:39..7:44 op=Add
+// CHECK-NEXT:                                                   lhs:
+// CHECK-NEXT:                                                     IdentExpr #8 @7:39..7:40 name="n"
+// CHECK-NEXT:                                                   rhs:
+// CHECK-NEXT:                                                     IntLiteral #9 @7:43..7:44 base=10 value="1"
+// CHECK-NEXT:                                           attrs: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #23 @8:3..8:15
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ReturnStmt #22 @8:3..8:15
+// CHECK-NEXT:                       value:
+// CHECK-NEXT:                         CallExpression #21 @8:10..8:14
+// CHECK-NEXT:                           callee:
+// CHECK-NEXT:                             IdentExpr #19 @8:10..8:11 name="f"
+// CHECK-NEXT:                           type_args: []
+// CHECK-NEXT:                           args:
+// CHECK-NEXT:                             IntLiteral #20 @8:12..8:13 base=10 value="2"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:       attrs: null

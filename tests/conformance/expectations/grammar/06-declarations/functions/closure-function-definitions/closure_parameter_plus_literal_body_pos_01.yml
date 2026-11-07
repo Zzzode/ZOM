@@ -1,0 +1,5 @@
+section: "§4 FunctionExpression declared parameter with literal operand"
+covers_rule: "functionExpression, functionParameter, functionBody, returnStatement, binaryExpression, integerLiteral"
+expected: "ACCEPT"
+notes:
+  - "RFC 0057 slice 2: a one-parameter parameter-plus-literal arithmetic block body parses legally and lowers; lowering is a compiler capability decision, never a grammar one."
