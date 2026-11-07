@@ -1,5 +1,0 @@
-section: "§4 LambdaExpression expression body literal operand"
-covers_rule: "lambdaExpression, lambdaExpressionBody, binaryExpression, integerLiteral"
-expected: "ACCEPT"
-notes:
-  - "RFC 0057 slice 2: a capture-plus-literal arithmetic expression body parses legally; it drains semantically (ZOM4099 behind the flag) because the expression-body slice yields one capture directly only, not because the grammar rejects it."
