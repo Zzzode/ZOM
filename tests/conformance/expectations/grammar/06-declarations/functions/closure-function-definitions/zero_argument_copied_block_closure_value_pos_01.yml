@@ -1,0 +1,5 @@
+section: "§4 zero-argument closure through a copy chain"
+covers_rule: "lambdaExpression, lambdaParameterList, callExpression, identifier, scalarLiteral"
+expected: "ACCEPT"
+notes:
+  - "RFC 0057 slice 2: a zero-argument closure copy chain parses legally and lowers; lowering is a compiler capability decision, never a grammar one."

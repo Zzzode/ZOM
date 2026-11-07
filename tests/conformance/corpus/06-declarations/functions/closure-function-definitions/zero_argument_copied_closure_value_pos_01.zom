@@ -1,0 +1,9 @@
+// RFC 0057 slice 2 positive: a zero-capture, zero-parameter scalar-literal
+// expression-body lambda reached through a whole-local copy chain. The
+// indirect call carries an empty argument vector; this needs no experimental
+// capture gate because the closure captures nothing.
+fn entry() -> i32 {
+  let f = () -> i32 => 42;
+  let g = f;
+  return g();
+}

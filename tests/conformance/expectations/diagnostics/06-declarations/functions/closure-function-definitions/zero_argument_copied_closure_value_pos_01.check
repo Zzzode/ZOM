@@ -1,0 +1,9 @@
+// RUN: cd %corpus && %zomc compile --check 06-declarations/functions/closure-function-definitions/zero_argument_copied_closure_value_pos_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// RFC 0057 slice 2 positive: a zero-parameter scalar-literal closure reached
+// through a whole-local copy chain lowers through the full
+// checker/HIR/MIR/LIR pipeline with no capture gate and an empty argument
+// vector. The compiler exits 0 and emits no diagnostic.
+
+// CHECK-NOT: Error
