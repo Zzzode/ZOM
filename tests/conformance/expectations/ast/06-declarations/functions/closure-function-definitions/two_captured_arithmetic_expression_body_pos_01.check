@@ -1,0 +1,101 @@
+// RUN: %zomc compile --dump-ast %corpus/06-declarations/functions/closure-function-definitions/two_captured_arithmetic_expression_body_pos_01.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #41 @7:1..14:1 file_name="two_captured_arithmetic_expression_body_pos_01.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #40 @7:1..13:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #39 @7:1..13:2 name="entry"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #1 @7:9..7:11 nparams=0
+// CHECK-NEXT:               params: []
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty:
+// CHECK-NEXT:             PredefinedTypeExpr #2 @7:15..7:18 kind=I32
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #38 @7:19..13:2
+// CHECK-NEXT:               stmts:
+// CHECK-NEXT:                 StatementListItem #9 @8:3..8:19
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     LetStmt #8 @8:3..8:19 kind=Let
+// CHECK-NEXT:                       declarations:
+// CHECK-NEXT:                         VariableDeclaratorList #7 @8:7..8:18 n_decls=1
+// CHECK-NEXT:                           decls:
+// CHECK-NEXT:                             VariableDeclarator #6 @8:7..8:18
+// CHECK-NEXT:                               pattern:
+// CHECK-NEXT:                                 IdentifierPattern #3 @8:7..8:8 name="a"
+// CHECK-NEXT:                                   ty: null
+// CHECK-NEXT:                               ty:
+// CHECK-NEXT:                                 PredefinedTypeExpr #4 @8:10..8:13 kind=I32
+// CHECK-NEXT:                               init:
+// CHECK-NEXT:                                 IntLiteral #5 @8:16..8:18 base=10 value="40"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #16 @9:3..9:18
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     LetStmt #15 @9:3..9:18 kind=Let
+// CHECK-NEXT:                       declarations:
+// CHECK-NEXT:                         VariableDeclaratorList #14 @9:7..9:17 n_decls=1
+// CHECK-NEXT:                           decls:
+// CHECK-NEXT:                             VariableDeclarator #13 @9:7..9:17
+// CHECK-NEXT:                               pattern:
+// CHECK-NEXT:                                 IdentifierPattern #10 @9:7..9:8 name="b"
+// CHECK-NEXT:                                   ty: null
+// CHECK-NEXT:                               ty:
+// CHECK-NEXT:                                 PredefinedTypeExpr #11 @9:10..9:13 kind=I32
+// CHECK-NEXT:                               init:
+// CHECK-NEXT:                                 IntLiteral #12 @9:16..9:17 base=10 value="2"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #27 @10:3..10:30
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     LetStmt #26 @10:3..10:30 kind=Let
+// CHECK-NEXT:                       declarations:
+// CHECK-NEXT:                         VariableDeclaratorList #25 @10:7..10:29 n_decls=1
+// CHECK-NEXT:                           decls:
+// CHECK-NEXT:                             VariableDeclarator #24 @10:7..10:29
+// CHECK-NEXT:                               pattern:
+// CHECK-NEXT:                                 IdentifierPattern #17 @10:7..10:8 name="f"
+// CHECK-NEXT:                                   ty: null
+// CHECK-NEXT:                               ty: null
+// CHECK-NEXT:                               init:
+// CHECK-NEXT:                                 LambdaExpression #23 @10:11..10:29
+// CHECK-NEXT:                                   params_id:
+// CHECK-NEXT:                                     FunctionParameterList #18 @10:11..10:13 nparams=0
+// CHECK-NEXT:                                       params: []
+// CHECK-NEXT:                                   ret_ty:
+// CHECK-NEXT:                                     PredefinedTypeExpr #19 @10:17..10:20 kind=I32
+// CHECK-NEXT:                                   raises_ty: null
+// CHECK-NEXT:                                   body: null
+// CHECK-NEXT:                                   expr_body:
+// CHECK-NEXT:                                     BinaryExpr #22 @10:24..10:29 op=Add
+// CHECK-NEXT:                                       lhs:
+// CHECK-NEXT:                                         IdentExpr #20 @10:24..10:25 name="a"
+// CHECK-NEXT:                                       rhs:
+// CHECK-NEXT:                                         IdentExpr #21 @10:28..10:29 name="b"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #33 @11:3..11:13
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     LetStmt #32 @11:3..11:13 kind=Let
+// CHECK-NEXT:                       declarations:
+// CHECK-NEXT:                         VariableDeclaratorList #31 @11:7..11:12 n_decls=1
+// CHECK-NEXT:                           decls:
+// CHECK-NEXT:                             VariableDeclarator #30 @11:7..11:12
+// CHECK-NEXT:                               pattern:
+// CHECK-NEXT:                                 IdentifierPattern #28 @11:7..11:8 name="g"
+// CHECK-NEXT:                                   ty: null
+// CHECK-NEXT:                               ty: null
+// CHECK-NEXT:                               init:
+// CHECK-NEXT:                                 IdentExpr #29 @11:11..11:12 name="f"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #37 @12:3..12:14
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ReturnStmt #36 @12:3..12:14
+// CHECK-NEXT:                       value:
+// CHECK-NEXT:                         CallExpression #35 @12:10..12:13
+// CHECK-NEXT:                           callee:
+// CHECK-NEXT:                             IdentExpr #34 @12:10..12:11 name="g"
+// CHECK-NEXT:                           type_args: []
+// CHECK-NEXT:                           args: []
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:       attrs: null

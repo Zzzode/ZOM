@@ -1,0 +1,12 @@
+// RFC 0057 slice 2 negative: an expression-body paren-arrow lambda yielding an
+// arithmetic binary over one captured local and an integer literal stays on
+// the block-body spelling; the expression-body capture slices yield one
+// capture directly or combine two captured identifiers, so with the gate on
+// the owning function keeps one ZOM4099 capability diagnostic with zero
+// incidents.
+fn entry() -> i32 {
+  let a: i32 = 41;
+  let f = () -> i32 => a + 1;
+  let g = f;
+  return g();
+}

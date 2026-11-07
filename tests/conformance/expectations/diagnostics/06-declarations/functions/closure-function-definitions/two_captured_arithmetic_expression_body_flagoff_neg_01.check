@@ -1,0 +1,9 @@
+// RUN: cd %corpus && ! %zomc compile --check 06-declarations/functions/closure-function-definitions/two_captured_arithmetic_expression_body_pos_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// RFC 0057 slice 2 flag-off boundary: without --experimental-captures the
+// two-capture expression-body lambda is not admitted at any layer, so the
+// source keeps the ZOM4099 capability drain with zero incidents.
+
+// CHECK: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
+// CHECK-NOT: internal compiler error

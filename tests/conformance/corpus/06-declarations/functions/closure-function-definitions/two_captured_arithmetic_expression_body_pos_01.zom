@@ -1,0 +1,13 @@
+// RFC 0057 slice 2 expr-body two-capture arithmetic positive: a zero-parameter
+// paren-arrow lambda with no block or return that combines two initialized
+// read-only i32 locals captured by value in one arithmetic expression body,
+// reached through a whole-local copy chain. Admitted only behind the
+// default-off --experimental-captures gate; without it this source keeps the
+// ZOM4099 capability drain.
+fn entry() -> i32 {
+  let a: i32 = 40;
+  let b: i32 = 2;
+  let f = () -> i32 => a + b;
+  let g = f;
+  return g();
+}
