@@ -1315,31 +1315,38 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       ast::NodeId captureLiteralNode;
       ast::NodeId captureIdentifierNode;
       {
-        auto probeShape =
-            functionReturnShape(closureTree, closureTree.node(closureDefinition.node));
+        ast::NodeId captureLiteralValue{};
+        if (closureIsFunctionExpression) {
+          auto probeShape =
+              functionReturnShape(closureTree, closureTree.node(closureDefinition.node));
+          if (probeShape != zc::none) { captureLiteralValue = ZC_ASSERT_NONNULL(probeShape).value; }
+        } else {
+          const ast::NodeId probeLambdaBlock(closureTree.node(closureDefinition.node)
+                                                 .payload.words[ast::kLambdaExpressionBodyWord]);
+          if (!closureTree.contains(probeLambdaBlock)) {
+            captureLiteralValue =
+                ast::NodeId(closureTree.node(closureDefinition.node)
+                                .payload.words[ast::kLambdaExpressionExprBodyWord]);
+          }
+        }
         if (closureCaptures && closureParameterCount == 0 && orderedCaptureFacts.size() == 1 &&
             earlyCallable.receiver == zc::none && earlyCallable.raises == zc::none &&
-            earlyCallable.abi == zc::none && probeShape != zc::none) {
-          const ast::NodeId probeValue = ZC_ASSERT_NONNULL(probeShape).value;
-          if (closureTree.contains(probeValue) &&
-              closureTree.node(probeValue).kind == ast::SyntaxKind::BinaryExpr) {
-            const ast::NodeId probeLeft(
-                closureTree.node(probeValue).payload.words[ast::kBinaryExprLhsWord]);
-            const ast::NodeId probeRight(
-                closureTree.node(probeValue).payload.words[ast::kBinaryExprRhsWord]);
-            if (closureTree.contains(probeLeft) && closureTree.contains(probeRight)) {
-              const bool leftIdent = closureTree.node(probeLeft).kind == ast::SyntaxKind::IdentExpr;
-              const bool rightIdent =
-                  closureTree.node(probeRight).kind == ast::SyntaxKind::IdentExpr;
-              const bool leftInt = closureTree.node(probeLeft).kind == ast::SyntaxKind::IntLiteral;
-              const bool rightInt =
-                  closureTree.node(probeRight).kind == ast::SyntaxKind::IntLiteral;
-              if ((leftIdent && rightInt) || (leftInt && rightIdent)) {
-                captureLiteralArithmetic = true;
-                captureLiteralIsLeft = leftInt;
-                captureLiteralNode = leftInt ? probeLeft : probeRight;
-                captureIdentifierNode = leftIdent ? probeLeft : probeRight;
-              }
+            earlyCallable.abi == zc::none && closureTree.contains(captureLiteralValue) &&
+            closureTree.node(captureLiteralValue).kind == ast::SyntaxKind::BinaryExpr) {
+          const ast::NodeId probeLeft(
+              closureTree.node(captureLiteralValue).payload.words[ast::kBinaryExprLhsWord]);
+          const ast::NodeId probeRight(
+              closureTree.node(captureLiteralValue).payload.words[ast::kBinaryExprRhsWord]);
+          if (closureTree.contains(probeLeft) && closureTree.contains(probeRight)) {
+            const bool leftIdent = closureTree.node(probeLeft).kind == ast::SyntaxKind::IdentExpr;
+            const bool rightIdent = closureTree.node(probeRight).kind == ast::SyntaxKind::IdentExpr;
+            const bool leftInt = closureTree.node(probeLeft).kind == ast::SyntaxKind::IntLiteral;
+            const bool rightInt = closureTree.node(probeRight).kind == ast::SyntaxKind::IntLiteral;
+            if ((leftIdent && rightInt) || (leftInt && rightIdent)) {
+              captureLiteralArithmetic = true;
+              captureLiteralIsLeft = leftInt;
+              captureLiteralNode = leftInt ? probeLeft : probeRight;
+              captureIdentifierNode = leftIdent ? probeLeft : probeRight;
             }
           }
         }
@@ -1876,6 +1883,16 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               }
             }
             if (mixedCaptureLeaves != 1 || mixedDeclaredLeaves != 1) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::InvalidFact, module,
+                                                  registries, index + 1);
+            }
+          } else if (orderedCaptureFacts.size() == 1 && captureLiteralArithmetic) {
+            // Capture-plus-literal expression body: the identifier operand (in
+            // either position) must be the one canonical capture place; the
+            // other operand is the literal named by the probe.
+            if (orderedCaptureFacts[0]->place.node != captureIdentifierNode ||
+                captureIdentifierNode == captureLiteralNode) {
               return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                   ir::IrFailureKind::InvalidFact, module,
                                                   registries, index + 1);

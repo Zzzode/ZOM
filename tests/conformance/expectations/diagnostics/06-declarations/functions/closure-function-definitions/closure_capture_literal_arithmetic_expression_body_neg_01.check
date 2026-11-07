@@ -1,9 +1,0 @@
-// RUN: cd %corpus && ! %zomc compile --check --experimental-captures 06-declarations/functions/closure-function-definitions/closure_capture_literal_arithmetic_expression_body_neg_01.zom > %t 2>&1
-// RUN: %FileCheck %s --input-file %t
-
-// RFC 0057 slice 2 negative: a capture-plus-literal arithmetic expression
-// body stays on the block-body spelling, so with the gate on the owning
-// function keeps one ZOM4099 capability diagnostic with zero incidents.
-
-// CHECK: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
-// CHECK-NOT: internal compiler error

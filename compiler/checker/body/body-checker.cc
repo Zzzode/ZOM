@@ -5457,18 +5457,27 @@ zc::Maybe<zc::Vector<AdmittedScalarCapture>> admittedScalarCaptureSet(
   } else {
     // An expression-body paren-arrow lambda carries its sole yield in the
     // expression-body word with no block body word. The slice-2 expr-body
-    // capture forms either yield one captured identifier directly or combine
-    // two captured identifiers in one integer arithmetic binary. A binary
-    // with a literal operand (capture-plus-literal) stays on a later slice.
+    // capture forms yield one captured identifier directly, combine two
+    // captured identifiers in one integer arithmetic binary, or combine one
+    // captured identifier with one integer literal. A binary whose operands
+    // name two literals (no capture) or a declared parameter stays rejected.
     const ast::NodeId lambdaBlock(closureExpr.payload.words[ast::kLambdaExpressionBodyWord]);
     valueNode = ast::NodeId(closureExpr.payload.words[ast::kLambdaExpressionExprBodyWord]);
     if (tree.contains(lambdaBlock) || !tree.contains(valueNode)) { return zc::none; }
     if (tree.node(valueNode).kind == ast::SyntaxKind::BinaryExpr) {
       const ast::NodeId lambdaLeft(tree.node(valueNode).payload.words[ast::kBinaryExprLhsWord]);
       const ast::NodeId lambdaRight(tree.node(valueNode).payload.words[ast::kBinaryExprRhsWord]);
-      if (!isIntegerArithmeticBinarySyntax(tree, valueNode) || !tree.contains(lambdaLeft) ||
-          tree.node(lambdaLeft).kind != ast::SyntaxKind::IdentExpr || !tree.contains(lambdaRight) ||
-          tree.node(lambdaRight).kind != ast::SyntaxKind::IdentExpr) {
+      const bool leftIsIdent =
+          tree.contains(lambdaLeft) && tree.node(lambdaLeft).kind == ast::SyntaxKind::IdentExpr;
+      const bool rightIsIdent =
+          tree.contains(lambdaRight) && tree.node(lambdaRight).kind == ast::SyntaxKind::IdentExpr;
+      const bool leftIsIntLiteral =
+          tree.contains(lambdaLeft) && tree.node(lambdaLeft).kind == ast::SyntaxKind::IntLiteral;
+      const bool rightIsIntLiteral =
+          tree.contains(lambdaRight) && tree.node(lambdaRight).kind == ast::SyntaxKind::IntLiteral;
+      if (!isIntegerArithmeticBinarySyntax(tree, valueNode) ||
+          !((leftIsIdent && rightIsIdent) || (leftIsIdent && rightIsIntLiteral) ||
+            (leftIsIntLiteral && rightIsIdent))) {
         return zc::none;
       }
     } else if (tree.node(valueNode).kind != ast::SyntaxKind::IdentExpr) {

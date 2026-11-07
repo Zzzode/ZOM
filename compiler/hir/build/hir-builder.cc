@@ -14015,11 +14015,50 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           return false;
         };
         if (!mixedParameterCapture && orderedCaptureFacts.size() == 1) {
-          if (closureTree.node(lambdaBody).kind != ast::SyntaxKind::IdentExpr ||
-              orderedCaptureFacts[0]->place.node != lambdaBody) {
+          if (closureTree.node(lambdaBody).kind == ast::SyntaxKind::IdentExpr) {
+            if (orderedCaptureFacts[0]->place.node != lambdaBody) {
+              return rejectClosureCapability();
+            }
+            capturingLeaves.add(CapturingLeaf{lambdaBody, 0, /*declaredParameter=*/false});
+          } else if (closureTree.node(lambdaBody).kind == ast::SyntaxKind::BinaryExpr) {
+            // Capture-plus-literal arithmetic expression body: one identifier
+            // operand is the capture place and the other is an integer literal
+            // folded to a constant arm inside the closure body.
+            const ast::NodeId lambdaLeft(
+                closureTree.node(lambdaBody).payload.words[ast::kBinaryExprLhsWord]);
+            const ast::NodeId lambdaRight(
+                closureTree.node(lambdaBody).payload.words[ast::kBinaryExprRhsWord]);
+            const bool leftIdent = closureTree.contains(lambdaLeft) &&
+                                   closureTree.node(lambdaLeft).kind == ast::SyntaxKind::IdentExpr;
+            const bool rightIdent =
+                closureTree.contains(lambdaRight) &&
+                closureTree.node(lambdaRight).kind == ast::SyntaxKind::IdentExpr;
+            const bool leftLiteral =
+                closureTree.contains(lambdaLeft) &&
+                closureTree.node(lambdaLeft).kind == ast::SyntaxKind::IntLiteral;
+            const bool rightLiteral =
+                closureTree.contains(lambdaRight) &&
+                closureTree.node(lambdaRight).kind == ast::SyntaxKind::IntLiteral;
+            ast::NodeId lambdaIdentLeaf{};
+            ast::NodeId lambdaLiteralNode{};
+            if (leftIdent && rightLiteral) {
+              lambdaIdentLeaf = lambdaLeft;
+              lambdaLiteralNode = lambdaRight;
+            } else if (leftLiteral && rightIdent) {
+              lambdaLiteralNode = lambdaLeft;
+              lambdaIdentLeaf = lambdaRight;
+            } else {
+              return rejectClosureCapability();
+            }
+            if (orderedCaptureFacts[0]->place.node != lambdaIdentLeaf) {
+              return rejectClosureCapability();
+            }
+            captureLiteralArithmetic = true;
+            captureLiteralNode = lambdaLiteralNode;
+            capturingLeaves.add(CapturingLeaf{lambdaIdentLeaf, 0, /*declaredParameter=*/false});
+          } else {
             return rejectClosureCapability();
           }
-          capturingLeaves.add(CapturingLeaf{lambdaBody, 0, /*declaredParameter=*/false});
         } else {
           // Binary body: two captures (two canonical capture places in order)
           // or the mixed form (one declared parameter plus one capture).
