@@ -1,0 +1,13 @@
+// RFC 0057 slice 2 expr-body two-capture arithmetic form: a zero-parameter
+// paren-arrow lambda with no block or return that combines two captured Copy
+// scalars by value in one integer arithmetic expression body. It is reached
+// through a whole-local copy chain; the indirect call passes both captured
+// locals as by-value environment arguments. The program exits 42 (40 plus 2)
+// through the indirect-call ABI (flagged experiment).
+fn entry() -> i32 {
+  let a: i32 = 40;
+  let b: i32 = 2;
+  let f = () -> i32 => a + b;
+  let g = f;
+  return g();
+}
