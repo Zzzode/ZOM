@@ -5525,8 +5525,10 @@ zc::Maybe<zc::Vector<AdmittedScalarCapture>> admittedScalarCaptureSet(
   // distinguishable from an enclosing-function parameter or a capture.
   zc::Vector<ast::NodeId> closureParameterNodes;
   if (signatureParameterCount == 1) {
-    const ast::NodeId parameterListId(
-        closureExpr.payload.words[ast::kFunctionExpressionParamsIdWord]);
+    const uint32_t parameterListWord = closureIsFunctionExpression
+                                           ? ast::kFunctionExpressionParamsIdWord
+                                           : ast::kLambdaExpressionParamsIdWord;
+    const ast::NodeId parameterListId(closureExpr.payload.words[parameterListWord]);
     if (!tree.contains(parameterListId) ||
         tree.node(parameterListId).kind != ast::SyntaxKind::FunctionParameterList) {
       return zc::none;

@@ -13963,15 +13963,18 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       identity::SourceSpan closureReturnSpan = closure.source.clone();
       identity::SourceSpan closureValueSpan = closure.source.clone();
       if (isCapturingClosure && !closureIsFunctionExpression) {
-        // Capturing expression-body paren-arrow lambda: zero declared
-        // parameters with no source block or return. It either yields one
-        // captured identifier directly (one capture) or combines two captured
-        // identifiers in one integer arithmetic expression body (two
-        // captures). The mixed parameter form and capture-plus-literal
-        // expression bodies stay on later slices. Body/return anchors stay
-        // sentinel and their spans reuse the closure source span.
-        if (mixedParameterCapture ||
-            (orderedCaptureFacts.size() != 1 && orderedCaptureFacts.size() != 2)) {
+        // Capturing expression-body paren-arrow lambda with no source block or
+        // return. It admits: one capture yielded directly (one capture,
+        // identifier body), two captures combined arithmetically (two
+        // captures, binary body), or the mixed form (one declared parameter
+        // plus one capture combined arithmetically, binary body). The
+        // capture-plus-literal expression body stays on a later slice.
+        // Body/return anchors stay sentinel and their spans reuse the closure
+        // source span.
+        if (orderedCaptureFacts.size() != 1 && orderedCaptureFacts.size() != 2) {
+          return rejectClosureCapability();
+        }
+        if (mixedParameterCapture && orderedCaptureFacts.size() != 1) {
           return rejectClosureCapability();
         }
         const ast::NodeId lambdaBlock(
@@ -13983,15 +13986,43 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         }
         auto lambdaValueSpan = bound.parsedModule().spanFor(closureTree.node(lambdaBody).range);
         if (lambdaValueSpan == zc::none) { return rejectClosureCapability(); }
-        if (orderedCaptureFacts.size() == 1) {
+        // Recognize the one declared parameter of a mixed lambda structurally
+        // through its own lambda FunctionParameterDecl on the owner-local rail.
+        auto lambdaNamesDeclaredParameter = [&](ast::NodeId leaf) -> bool {
+          if (!mixedParameterCapture) { return false; }
+          auto parameterBinding = resolvedOwnerLocal(bound.bindings(), leaf);
+          if (parameterBinding == zc::none) { return false; }
+          const ast::NodeId lambdaParameterListId(
+              closureTree.node(closure.node).payload.words[ast::kLambdaExpressionParamsIdWord]);
+          if (!closureTree.contains(lambdaParameterListId)) { return false; }
+          const ast::NodeList lambdaParameterNodes{
+              closureTree.node(lambdaParameterListId)
+                  .payload.words[ast::kFunctionParameterListParamsFirstWord],
+              closureTree.node(lambdaParameterListId)
+                  .payload.words[ast::kFunctionParameterListParamsSizeWord]};
+          if (!closureTree.contains(lambdaParameterNodes) || lambdaParameterNodes.size != 1) {
+            return false;
+          }
+          const ast::NodeId lambdaParameterDecl = closureTree.list(lambdaParameterNodes)[0];
+          for (const auto& local : bound.definitions().ownerLocalBindings()) {
+            if (local.binding != ZC_ASSERT_NONNULL(parameterBinding) ||
+                !local.site.value().is<binder::DeclarationDefinitionSite>()) {
+              continue;
+            }
+            return local.site.value().get<binder::DeclarationDefinitionSite>().node ==
+                   lambdaParameterDecl;
+          }
+          return false;
+        };
+        if (!mixedParameterCapture && orderedCaptureFacts.size() == 1) {
           if (closureTree.node(lambdaBody).kind != ast::SyntaxKind::IdentExpr ||
               orderedCaptureFacts[0]->place.node != lambdaBody) {
             return rejectClosureCapability();
           }
           capturingLeaves.add(CapturingLeaf{lambdaBody, 0, /*declaredParameter=*/false});
         } else {
-          // Two captures: an arithmetic binary whose two identifier operands
-          // name the two canonical capture places in canonical order.
+          // Binary body: two captures (two canonical capture places in order)
+          // or the mixed form (one declared parameter plus one capture).
           const ast::NodeId lambdaLeft(
               closureTree.node(lambdaBody).payload.words[ast::kBinaryExprLhsWord]);
           const ast::NodeId lambdaRight(
@@ -14000,13 +14031,39 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               !closureTree.contains(lambdaLeft) ||
               closureTree.node(lambdaLeft).kind != ast::SyntaxKind::IdentExpr ||
               !closureTree.contains(lambdaRight) ||
-              closureTree.node(lambdaRight).kind != ast::SyntaxKind::IdentExpr ||
-              orderedCaptureFacts[0]->place.node != lambdaLeft ||
-              orderedCaptureFacts[1]->place.node != lambdaRight) {
+              closureTree.node(lambdaRight).kind != ast::SyntaxKind::IdentExpr) {
             return rejectClosureCapability();
           }
-          capturingLeaves.add(CapturingLeaf{lambdaLeft, 0, /*declaredParameter=*/false});
-          capturingLeaves.add(CapturingLeaf{lambdaRight, 1, /*declaredParameter=*/false});
+          size_t lambdaDeclaredLeaves = 0;
+          for (const ast::NodeId leaf : {lambdaLeft, lambdaRight}) {
+            if (lambdaNamesDeclaredParameter(leaf)) {
+              ++lambdaDeclaredLeaves;
+              capturingLeaves.add(CapturingLeaf{leaf, 0, /*declaredParameter=*/true});
+              continue;
+            }
+            zc::Maybe<size_t> leafSlot;
+            for (size_t factSlot = 0; factSlot < orderedCaptureFacts.size(); ++factSlot) {
+              if (orderedCaptureFacts[factSlot]->place.node == leaf) { leafSlot = factSlot; }
+            }
+            if (leafSlot == zc::none) { return rejectClosureCapability(); }
+            size_t slot = 0;
+            ZC_IF_SOME(value, leafSlot) { slot = value; }
+            for (const auto& existing : capturingLeaves) {
+              if (!existing.declaredParameter && existing.factSlot == slot) {
+                return rejectClosureCapability();
+              }
+            }
+            capturingLeaves.add(CapturingLeaf{leaf, slot, /*declaredParameter=*/false});
+          }
+          if (mixedParameterCapture) {
+            if (lambdaDeclaredLeaves != 1 || capturingLeaves.size() != 2) {
+              return rejectClosureCapability();
+            }
+          } else if (lambdaDeclaredLeaves != 0 || capturingLeaves.size() != 2 ||
+                     orderedCaptureFacts[0]->place.node != lambdaLeft ||
+                     orderedCaptureFacts[1]->place.node != lambdaRight) {
+            return rejectClosureCapability();
+          }
         }
         closureValue = lambdaBody;
         closureValueSpan = ZC_ASSERT_NONNULL(lambdaValueSpan).clone();

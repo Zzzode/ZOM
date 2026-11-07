@@ -1843,9 +1843,44 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           // A one-capture expression body yields the single capture place
           // directly; a two-capture expression body is an arithmetic binary
           // whose two identifier operands are the two canonical capture place
-          // nodes in canonical order. The non-binary or binary record
-          // reconciliation below recomputes each environment parameter key.
-          if (orderedCaptureFacts.size() == 1) {
+          // nodes in canonical order; the mixed form is a binary whose one
+          // operand names the declared parameter and the other names the one
+          // capture place. The record reconciliation below recomputes each
+          // parameter key.
+          if (orderedCaptureFacts.size() == 1 && mixedParameterCapture && binaryClosure) {
+            const ast::NodeId mixedLeft(
+                closureTree.node(lambdaBody).payload.words[ast::kBinaryExprLhsWord]);
+            const ast::NodeId mixedRight(
+                closureTree.node(lambdaBody).payload.words[ast::kBinaryExprRhsWord]);
+            if (!closureTree.contains(mixedLeft) ||
+                closureTree.node(mixedLeft).kind != ast::SyntaxKind::IdentExpr ||
+                !closureTree.contains(mixedRight) ||
+                closureTree.node(mixedRight).kind != ast::SyntaxKind::IdentExpr) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::InvalidFact, module,
+                                                  registries, index + 1);
+            }
+            size_t mixedCaptureLeaves = 0;
+            size_t mixedDeclaredLeaves = 0;
+            for (const ast::NodeId leaf : {mixedLeft, mixedRight}) {
+              size_t declaredIndex = 0;
+              if (namesOneDeclaredParameter(leaf, ast::kLambdaExpressionParamsIdWord,
+                                            declaredIndex)) {
+                ++mixedDeclaredLeaves;
+              } else if (orderedCaptureFacts[0]->place.node == leaf) {
+                ++mixedCaptureLeaves;
+              } else {
+                return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                    ir::IrFailureKind::InvalidFact, module,
+                                                    registries, index + 1);
+              }
+            }
+            if (mixedCaptureLeaves != 1 || mixedDeclaredLeaves != 1) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::InvalidFact, module,
+                                                  registries, index + 1);
+            }
+          } else if (orderedCaptureFacts.size() == 1) {
             if (orderedCaptureFacts[0]->place.node != lambdaBody) {
               return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                   ir::IrFailureKind::InvalidFact, module,
@@ -2030,9 +2065,11 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             return zc::none;
           }
           if (mixedParameterCapture) {
+            const uint32_t mixedParameterListWord = closureIsFunctionExpression
+                                                        ? ast::kFunctionExpressionParamsIdWord
+                                                        : ast::kLambdaExpressionParamsIdWord;
             size_t declaredLeafIndex = 0;
-            if (namesOneDeclaredParameter(leaf, ast::kFunctionExpressionParamsIdWord,
-                                          declaredLeafIndex) &&
+            if (namesOneDeclaredParameter(leaf, mixedParameterListWord, declaredLeafIndex) &&
                 declaredLeafIndex == 0) {
               return earlyCallable.parameters[0].parameter.clone();
             }
