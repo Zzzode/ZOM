@@ -579,6 +579,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/mixed-captured-parameter-expression-body-closure-consumer/Zom.toml::mixed_captured_parameter_expression_body_closure_consumer::mixed_captured_parameter_expression_body_closure_consumer::42::--experimental-captures"
       --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/captured-literal-arithmetic-expression-body-closure-consumer/Zom.toml::captured_literal_arithmetic_expression_body_closure_consumer::captured_literal_arithmetic_expression_body_closure_consumer::42::--experimental-captures"
+      --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/call-consumer/Zom.toml::call_consumer::call_consumer::42"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/callarg-consumer/Zom.toml::callarg_consumer::callarg_consumer::7"

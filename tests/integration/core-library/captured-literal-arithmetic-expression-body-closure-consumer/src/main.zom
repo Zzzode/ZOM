@@ -1,0 +1,13 @@
+// RFC 0057 slice 2 expr-body capture-plus-literal form: a zero-parameter
+// paren-arrow lambda with no block or return that combines one Copy scalar
+// captured by value with an integer literal in one arithmetic expression body.
+// It is reached through a whole-local copy chain; the indirect call passes the
+// captured local as its sole by-value environment argument while the literal
+// folds to a constant inside the closure body. The program exits 42 through
+// the indirect-call ABI (flagged experiment).
+fn entry() -> i32 {
+  let a: i32 = 41;
+  let f = () -> i32 => a + 1;
+  let g = f;
+  return g();
+}
