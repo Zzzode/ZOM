@@ -1288,6 +1288,54 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           }
         }
       }
+      // RFC 0057 slice 2 one-parameter-plus-literal form: a non-capturing
+      // closure with one declared parameter whose sole body value is one
+      // arithmetic binary with one identifier operand and one integer literal
+      // operand. The identifier is reconciled to the one declared parameter
+      // and the literal becomes a constant HIR operand; the closure occupies
+      // the binary six-node stride carrying one published-parameter reference
+      // and one scalar literal.
+      bool parameterLiteralArithmeticClosure = false;
+      bool parameterLiteralIsLeft = false;
+      ast::NodeId parameterLiteralNode;
+      ast::NodeId parameterIdentifierNode;
+      if (parameterClosure && closureParameterCount == 1) {
+        ast::NodeId parameterLiteralValue;
+        if (closureIsFunctionExpression) {
+          auto probeShape =
+              functionReturnShape(closureTree, closureTree.node(closureDefinition.node));
+          if (probeShape != zc::none) {
+            parameterLiteralValue = ZC_ASSERT_NONNULL(probeShape).value;
+          }
+        } else {
+          const ast::NodeId probeBlock(closureTree.node(closureDefinition.node)
+                                           .payload.words[ast::kLambdaExpressionBodyWord]);
+          if (!closureTree.contains(probeBlock)) {
+            parameterLiteralValue =
+                ast::NodeId(closureTree.node(closureDefinition.node)
+                                .payload.words[ast::kLambdaExpressionExprBodyWord]);
+          }
+        }
+        if (closureTree.contains(parameterLiteralValue) &&
+            closureTree.node(parameterLiteralValue).kind == ast::SyntaxKind::BinaryExpr) {
+          const ast::NodeId probeLeft(
+              closureTree.node(parameterLiteralValue).payload.words[ast::kBinaryExprLhsWord]);
+          const ast::NodeId probeRight(
+              closureTree.node(parameterLiteralValue).payload.words[ast::kBinaryExprRhsWord]);
+          if (closureTree.contains(probeLeft) && closureTree.contains(probeRight)) {
+            const bool leftIdent = closureTree.node(probeLeft).kind == ast::SyntaxKind::IdentExpr;
+            const bool rightIdent = closureTree.node(probeRight).kind == ast::SyntaxKind::IdentExpr;
+            const bool leftInt = closureTree.node(probeLeft).kind == ast::SyntaxKind::IntLiteral;
+            const bool rightInt = closureTree.node(probeRight).kind == ast::SyntaxKind::IntLiteral;
+            if ((leftIdent && rightInt) || (leftInt && rightIdent)) {
+              parameterLiteralArithmeticClosure = true;
+              parameterLiteralIsLeft = leftInt;
+              parameterLiteralNode = leftInt ? probeLeft : probeRight;
+              parameterIdentifierNode = leftIdent ? probeLeft : probeRight;
+            }
+          }
+        }
+      }
       if (!closureCaptures && closureParameterCount != 0 && !parameterClosure) {
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                             ir::IrFailureKind::InvalidFact, module, registries,
@@ -1351,7 +1399,19 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           }
         }
       }
-      if (mixedParameterCapture || captureLiteralArithmetic || parameterArithmeticClosure) {
+      // A binary whose one operand is a parameter reference and whose other
+      // operand is a folded scalar literal is shared by two shapes: the
+      // zero-parameter one-capture capture-plus-literal form (the reference is
+      // the synthetic environment parameter) and the one-parameter
+      // parameter-plus-literal form (the reference is the sole declared
+      // parameter). Both occupy the same six-node stride; the operand key and
+      // the literal source node differ and are reconciled below.
+      const bool oneReferenceOneLiteralBinary =
+          captureLiteralArithmetic || parameterLiteralArithmeticClosure;
+      const bool literalOperandIsLeft =
+          captureLiteralArithmetic ? captureLiteralIsLeft : parameterLiteralIsLeft;
+      if (mixedParameterCapture || captureLiteralArithmetic || parameterArithmeticClosure ||
+          parameterLiteralArithmeticClosure) {
         binaryClosure = true;
       }
       // A one-capture closure occupies four source-preorder node ids (function,
@@ -1433,12 +1493,14 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             candidateExpression.node.ordinal() >= expectedFunction + closureStride) {
           continue;
         }
-        if (captureLiteralArithmetic) {
+        if (oneReferenceOneLiteralBinary) {
           // The one constant operand occupies the literal side of the binary
-          // (F+2 when left, F+3 when right); the other operand is an
-          // environment parameter reference handled in the loop below.
+          // (F+2 when left, F+3 when right); the other operand is a parameter
+          // reference handled in the loop below (an environment parameter for
+          // capture-plus-literal, the sole declared parameter for the
+          // one-parameter form).
           const HirNodeId expectedLiteralId =
-              hirId(expectedFunction + (captureLiteralIsLeft ? 2 : 3));
+              hirId(expectedFunction + (literalOperandIsLeft ? 2 : 3));
           if (closureLiteral != zc::none || candidateExpression.node != expectedLiteralId) {
             return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                 ir::IrFailureKind::AdditionalFact, module,
@@ -1471,11 +1533,11 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                               index + 1);
         }
         if (binaryClosure) {
-          const HirNodeId captureLiteralOperandId =
-              hirId(expectedFunction + (captureLiteralIsLeft ? 2 : 3));
+          const HirNodeId literalOperandId =
+              hirId(expectedFunction + (literalOperandIsLeft ? 2 : 3));
           if (candidateReference.node == hirId(expectedFunction + 2)) {
             if (closureLeftParamRef != zc::none ||
-                (captureLiteralArithmetic && candidateReference.node == captureLiteralOperandId)) {
+                (oneReferenceOneLiteralBinary && candidateReference.node == literalOperandId)) {
               return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                   ir::IrFailureKind::AdditionalFact, module,
                                                   registries, index + 1);
@@ -1483,7 +1545,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             closureLeftParamRef = candidateReference;
           } else if (candidateReference.node == hirId(expectedFunction + 3)) {
             if (closureRightParamRef != zc::none ||
-                (captureLiteralArithmetic && candidateReference.node == captureLiteralOperandId)) {
+                (oneReferenceOneLiteralBinary && candidateReference.node == literalOperandId)) {
               return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                   ir::IrFailureKind::AdditionalFact, module,
                                                   registries, index + 1);
@@ -1518,15 +1580,15 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           closureBinary = candidateBinary;
         }
       }
-      const bool captureLiteralIdentSidePresent =
-          captureLiteralIsLeft ? closureRightParamRef != zc::none : closureLeftParamRef != zc::none;
-      const bool captureLiteralRecordsComplete =
-          captureLiteralIsLeft ? closureLeftParamRef == zc::none : closureRightParamRef == zc::none;
+      const bool literalReferenceIdentSidePresent =
+          literalOperandIsLeft ? closureRightParamRef != zc::none : closureLeftParamRef != zc::none;
+      const bool literalReferenceRecordsComplete =
+          literalOperandIsLeft ? closureLeftParamRef == zc::none : closureRightParamRef == zc::none;
       const bool closureRecordsComplete =
           closureReturn != zc::none &&
           (binaryClosure
-               ? (captureLiteralArithmetic
-                      ? (captureLiteralIdentSidePresent && captureLiteralRecordsComplete &&
+               ? (oneReferenceOneLiteralBinary
+                      ? (literalReferenceIdentSidePresent && literalReferenceRecordsComplete &&
                          closureLiteral != zc::none && closureBinary != zc::none)
                       : (closureLeftParamRef != zc::none && closureRightParamRef != zc::none &&
                          closureBinary != zc::none))
@@ -1626,6 +1688,32 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                 } else {
                   sourceLeafNodes.add(binaryLeft);
                   sourceLeafNodes.add(binaryRight);
+                }
+              }
+            } else if (parameterLiteralArithmeticClosure) {
+              // One-parameter-plus-literal arithmetic: the binary has one
+              // identifier operand (the sole declared parameter) and one
+              // integer literal operand; only the identifier is reconciled
+              // against the declared parameter below.
+              if (closureTree.node(closureSource.value).kind != ast::SyntaxKind::BinaryExpr) {
+                closureSourceValueValid = false;
+              } else {
+                const ast::NodeId parameterLeft(
+                    closureTree.node(closureSource.value).payload.words[ast::kBinaryExprLhsWord]);
+                const ast::NodeId parameterRight(
+                    closureTree.node(closureSource.value).payload.words[ast::kBinaryExprRhsWord]);
+                if (!closureTree.contains(parameterLeft) || !closureTree.contains(parameterRight)) {
+                  closureSourceValueValid = false;
+                } else {
+                  const bool orderedIdentThenLiteral = parameterLeft == parameterIdentifierNode &&
+                                                       parameterRight == parameterLiteralNode;
+                  const bool orderedLiteralThenIdent = parameterLeft == parameterLiteralNode &&
+                                                       parameterRight == parameterIdentifierNode;
+                  if (!orderedIdentThenLiteral && !orderedLiteralThenIdent) {
+                    closureSourceValueValid = false;
+                  } else {
+                    sourceLeafNodes.add(parameterIdentifierNode);
+                  }
                 }
               }
             } else if (closureTree.node(closureSource.value).kind != ast::SyntaxKind::IdentExpr) {
@@ -1737,7 +1825,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             }
           }
         }
-        if (closureSourceValueValid && parameterClosure && !parameterArithmeticClosure) {
+        if (closureSourceValueValid && parameterClosure && !parameterArithmeticClosure &&
+            !parameterLiteralArithmeticClosure) {
           // The return identifier must materialize to the owner-local
           // CallableParameter binding at one of the closure's declared
           // parameter nodes.
@@ -1760,6 +1849,17 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               if (existing == leafIndex) { closureSourceValueValid = false; }
             }
             parameterIndices.add(leafIndex);
+          }
+        }
+        if (closureSourceValueValid && parameterLiteralArithmeticClosure) {
+          // The sole identifier operand must materialize to the one declared
+          // parameter at ordinary position zero.
+          size_t leafIndex = 0;
+          if (sourceLeafNodes.size() != 1 ||
+              !namesOneDeclaredParameter(sourceLeafNodes[0], ast::kFunctionExpressionParamsIdWord,
+                                         leafIndex) ||
+              leafIndex != 0) {
+            closureSourceValueValid = false;
           }
         }
         if (!closureSourceValueValid) {
@@ -1793,8 +1893,9 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         // parameter closure or for a two-capture capturing closure; both carry
         // the six-node binary stride. Capture-plus-literal and mixed
         // expression bodies stay on the block-body spelling.
-        const bool lambdaBinaryBody =
-            parameterArithmeticClosure || (closureCaptures && binaryClosure);
+        const bool lambdaBinaryBody = parameterArithmeticClosure ||
+                                      parameterLiteralArithmeticClosure ||
+                                      (closureCaptures && binaryClosure);
         const bool lambdaBodyShapeValid =
             closureTree.contains(lambdaBody) && (!closureTree.contains(lambdaBlock)) &&
             (lambdaBinaryBody ? closureTree.node(lambdaBody).kind == ast::SyntaxKind::BinaryExpr
@@ -1806,7 +1907,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                               ir::IrFailureKind::InvalidFact, module, registries,
                                               index + 1);
         }
-        if (parameterClosure && !parameterArithmeticClosure &&
+        if (parameterClosure && !parameterArithmeticClosure && !parameterLiteralArithmeticClosure &&
             !namesOneDeclaredParameter(lambdaBody, ast::kLambdaExpressionParamsIdWord,
                                        returnedClosureParameterIndex)) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
@@ -1844,6 +1945,31 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               }
             }
             lambdaParameterIndices.add(leafIndex);
+          }
+        }
+        if (parameterLiteralArithmeticClosure) {
+          // The one identifier operand must name the sole declared parameter at
+          // ordinary position zero; the other operand is the probed literal.
+          const ast::NodeId lambdaLeft(
+              closureTree.node(lambdaBody).payload.words[ast::kBinaryExprLhsWord]);
+          const ast::NodeId lambdaRight(
+              closureTree.node(lambdaBody).payload.words[ast::kBinaryExprRhsWord]);
+          if (!closureTree.contains(lambdaLeft) || !closureTree.contains(lambdaRight) ||
+              (lambdaLeft != parameterIdentifierNode && lambdaLeft != parameterLiteralNode) ||
+              (lambdaRight != parameterIdentifierNode && lambdaRight != parameterLiteralNode) ||
+              lambdaLeft == lambdaRight) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          size_t lambdaParameterIndex = 0;
+          if (!namesOneDeclaredParameter(parameterIdentifierNode,
+                                         ast::kLambdaExpressionParamsIdWord,
+                                         lambdaParameterIndex) ||
+              lambdaParameterIndex != 0) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
           }
         }
         if (closureCaptures) {
@@ -2042,6 +2168,97 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                 captureBinarySelected.get<checker::checked::PrimitiveCallable>().operation) ||
             binaryRecord.operation !=
                 captureBinarySelected.get<checker::checked::PrimitiveCallable>().operation ||
+            !typeExists(function.resultType, semanticTypes)) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+      } else if (binaryClosure && parameterLiteralArithmeticClosure) {
+        // One-parameter-plus-literal arithmetic closure: the sole declared
+        // parameter reference occupies the identifier operand side while a
+        // scalar literal occupies the other operand side. The parameter targets
+        // the one published signature parameter at ordinary position zero; the
+        // literal reconciles with a checked literal fact and the binary with
+        // the checker primitive call fact.
+        const auto& binaryRecord = ZC_ASSERT_NONNULL(closureBinary);
+        const auto& literalRecord = ZC_ASSERT_NONNULL(closureLiteral);
+        const ast::NodeId leftLeaf(
+            closureTree.node(closureValue).payload.words[ast::kBinaryExprLhsWord]);
+        const ast::NodeId rightLeaf(
+            closureTree.node(closureValue).payload.words[ast::kBinaryExprRhsWord]);
+        const bool identIsLeft = leftLeaf == parameterIdentifierNode;
+        const auto& identRecord = identIsLeft ? ZC_ASSERT_NONNULL(closureLeftParamRef)
+                                              : ZC_ASSERT_NONNULL(closureRightParamRef);
+        auto identLeafSpan =
+            bound.parsedModule().spanFor(closureTree.node(parameterIdentifierNode).range);
+        auto literalLeafSpan =
+            bound.parsedModule().spanFor(closureTree.node(parameterLiteralNode).range);
+        const uint32_t parameterListWord = closureIsFunctionExpression
+                                               ? ast::kFunctionExpressionParamsIdWord
+                                               : ast::kLambdaExpressionParamsIdWord;
+        size_t declaredIdentIndex = 0;
+        const bool identNamesDeclaredParameter =
+            namesOneDeclaredParameter(parameterIdentifierNode, parameterListWord,
+                                      declaredIdentIndex) &&
+            declaredIdentIndex == 0;
+        const identity::CallableParameterKey expectedDeclaredKey =
+            earlyCallable.parameters[0].parameter.clone();
+        auto literalFactIndex = factIndex(facts.literals(), parameterLiteralNode);
+        auto parameterLiteralCallIndex = factIndex(facts.calls(), closureValue);
+        if (!identNamesDeclaredParameter ||
+            (leftLeaf != parameterIdentifierNode && leftLeaf != parameterLiteralNode) ||
+            (rightLeaf != parameterIdentifierNode && rightLeaf != parameterLiteralNode) ||
+            leftLeaf == rightLeaf || identLeafSpan == zc::none || literalLeafSpan == zc::none ||
+            literalFactIndex == zc::none || parameterLiteralCallIndex == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        size_t literalSlot = 0;
+        ZC_IF_SOME(value, literalFactIndex) { literalSlot = value; }
+        size_t parameterLiteralCallSlot = 0;
+        ZC_IF_SOME(value, parameterLiteralCallIndex) { parameterLiteralCallSlot = value; }
+        const auto& parameterLiteralFact = facts.literals().entries()[literalSlot].value;
+        const auto& parameterLiteralInvocation =
+            facts.calls().entries()[parameterLiteralCallSlot].value.invocation;
+        const auto& parameterLiteralSelected = parameterLiteralInvocation.selected.variant();
+        const HirNodeId leftHirOperand = identIsLeft ? identRecord.node : literalRecord.node;
+        const HirNodeId rightHirOperand = identIsLeft ? literalRecord.node : identRecord.node;
+        if (!sameSpan(block.sourceSpan, expectedBlockSpan) ||
+            !sameSpan(returnRecord.sourceSpan, expectedReturnSpan) ||
+            !sameSpan(function.sourceSpan, closureDefinition.source) ||
+            !sameSpan(binaryRecord.sourceSpan, expectedValueSpan) ||
+            !sameSpan(identRecord.sourceSpan, ZC_ASSERT_NONNULL(identLeafSpan)) ||
+            !sameSpan(literalRecord.sourceSpan, ZC_ASSERT_NONNULL(literalLeafSpan)) ||
+            returnRecord.resultType != function.resultType ||
+            returnRecord.value != binaryRecord.node || binaryRecord.left != leftHirOperand ||
+            binaryRecord.right != rightHirOperand ||
+            binaryRecord.operandType != function.resultType ||
+            binaryRecord.type != function.resultType ||
+            binaryRecord.category != HirValueCategory::Value ||
+            identRecord.type != function.resultType ||
+            identRecord.category != HirValueCategory::Place ||
+            identRecord.parameter != expectedDeclaredKey ||
+            literalRecord.type != function.resultType ||
+            literalRecord.category != HirValueCategory::Value ||
+            parameterLiteralFact.node != parameterLiteralNode ||
+            parameterLiteralFact.type != function.resultType ||
+            !sameConstant(literalRecord.value, parameterLiteralFact.literal, module, registries,
+                          semanticTypes) ||
+            !parameterLiteralSelected.is<checker::checked::PrimitiveCallable>() ||
+            parameterLiteralInvocation.arguments.size() != 2 ||
+            parameterLiteralInvocation.arguments[0].sourceNode != leftLeaf ||
+            parameterLiteralInvocation.arguments[1].sourceNode != rightLeaf ||
+            parameterLiteralInvocation.receiver != zc::none ||
+            parameterLiteralInvocation.substitutions != zc::none ||
+            parameterLiteralInvocation.witnesses != zc::none ||
+            parameterLiteralInvocation.raises != zc::none ||
+            parameterLiteralInvocation.successType != function.resultType ||
+            parameterLiteralInvocation.resultType != function.resultType ||
+            !isScalarArithmeticOperation(
+                parameterLiteralSelected.get<checker::checked::PrimitiveCallable>().operation) ||
+            binaryRecord.operation !=
+                parameterLiteralSelected.get<checker::checked::PrimitiveCallable>().operation ||
             !typeExists(function.resultType, semanticTypes)) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                               ir::IrFailureKind::InvalidFact, module, registries,

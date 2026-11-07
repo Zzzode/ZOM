@@ -951,9 +951,11 @@ ZC_TEST("CompilerSessionTest.ExpressionBodyLambdaParameterLowersToHirAndMir") {
   ZC_EXPECT(closureParameterTotal == 1);
   ZC_EXPECT(hir.calls().size() == 1);
   ZC_EXPECT(hir.calls()[0].arguments.size() == 1);
-  // A non-parameter-reference expression body keeps the capability drain.
+  // A one-parameter binary that names the sole parameter twice keeps the
+  // capability drain (a parameter binary needs two distinct declared
+  // parameters; the parameter-plus-literal form needs one literal operand).
   auto rejected = packageSession(
-      "fn entry() -> i32 { let f = (x: i32) -> i32 => x + 1; "
+      "fn entry() -> i32 { let f = (x: i32) -> i32 => x + x; "
       "return f(41); }\n"_zc);
   ZC_REQUIRE(rejected->parseSources());
   ZC_REQUIRE(rejected->bindSources());
@@ -1505,6 +1507,42 @@ ZC_TEST("CompilerSessionTest.CapturedLiteralArithmeticExpressionBodyLambdaLowers
     closureParameterTotal += function.parameters.size();
   }
   // One environment parameter on the lambda.
+  ZC_EXPECT(closureParameterTotal == 1);
+  ZC_REQUIRE(session->getOwnershipCheckedMirModules().size() == 1);
+  ZC_EXPECT(session->getOwnershipCheckedMirModules()[0].builtMir().functions().size() == 2);
+}
+
+ZC_TEST("CompilerSessionTest.OneParameterLiteralArithmeticClosureLowersToHirAndMir") {
+  // RFC 0057 slice 2: a non-capturing one-parameter closure whose body is one
+  // integer arithmetic operation over its declared parameter and an integer
+  // literal (`(n) -> i32 => n + 1`), reached through a whole-local copy chain
+  // (`let g = f; g(41)`). The closure function carries one published parameter;
+  // its body is one parameter-reference arm plus one constant arm; the call
+  // passes one source literal argument. HIR and MIR publish with zero
+  // diagnostics and zero incidents.
+  auto session = packageSession(
+      "fn entry() -> i32 { let f = (n: i32) -> i32 => n + 1; "
+      "let g = f; return g(41); }\n"_zc);
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(session->checkSources());
+  ZC_EXPECT(!session->hasDiagnosticErrors());
+  ZC_EXPECT(session->getIncidents().empty());
+  ZC_REQUIRE(session->getVerifiedHirModules().size() == 1);
+  const auto& hir = session->getVerifiedHirModules()[0];
+  ZC_EXPECT(hir.functions().size() == 2);
+  ZC_EXPECT(hir.closureAddresses().size() == 1);
+  ZC_EXPECT(hir.indirectCalls().size() == 1);
+  ZC_EXPECT(hir.primitiveBinaryOperations().size() == 1);
+  const auto& indirectCall = hir.indirectCalls()[0];
+  ZC_EXPECT(indirectCall.arguments.size() == 1);
+  ZC_EXPECT(indirectCall.arguments[0].value != zc::none);
+  ZC_EXPECT(indirectCall.callee == hir.closureAddresses()[0].closure);
+  size_t closureParameterTotal = 0;
+  for (const auto& function : hir.functions()) {
+    closureParameterTotal += function.parameters.size();
+  }
   ZC_EXPECT(closureParameterTotal == 1);
   ZC_REQUIRE(session->getOwnershipCheckedMirModules().size() == 1);
   ZC_EXPECT(session->getOwnershipCheckedMirModules()[0].builtMir().functions().size() == 2);

@@ -13952,6 +13952,18 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       bool parameterArithmetic = false;
       size_t parameterArithmeticLeftIndex = 0;
       size_t parameterArithmeticRightIndex = 0;
+      // RFC 0057 slice 2 one-parameter-plus-literal form: a non-capturing
+      // closure with one declared parameter whose sole body value is one
+      // integer arithmetic binary combining that parameter with one integer
+      // literal operand. When set, parameterLiteralLeafNode names the
+      // identifier operand (resolved to the one declared parameter) and
+      // parameterLiteralNode names the constant operand; the closure body
+      // lowers to a parameter-binary ComparisonReturn with one published-
+      // parameter arm and one constant arm.
+      bool parameterLiteralArithmetic = false;
+      ast::NodeId parameterLiteralNode;
+      ast::NodeId parameterLiteralLeafNode;
+      size_t parameterLiteralParameterIndex = 0;
       // Source anchors and spans. The lambda spelling has no source block or
       // return: hirBodyAnchor/hirReturnAnchor stay sentinel and their spans
       // reuse the closure source span, while the value anchors the body
@@ -14302,32 +14314,48 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           }
           parameterClosureValue = lambdaBody;
         }
-        // Split the body value into one identifier leaf or the two identifier
-        // operands of an arithmetic binary. A bare parameter identifier return
-        // is admitted for one or two declared parameters; a binary body is
-        // admitted only for two declared parameters (one-parameter arithmetic
-        // with a literal or a capture stays on the capture slices and keeps its
-        // drain here). The operation legality is reconciled with the checker
-        // primitive call fact at arm construction, not from the syntax kind.
+        // Split the body value into one identifier leaf or the operands of an
+        // arithmetic binary. A bare parameter identifier return is admitted
+        // for one or two declared parameters. A binary body is admitted for two
+        // declared parameters (two identifier operands), or for one declared
+        // parameter combined with one integer literal operand. A one-parameter
+        // binary over two references, a repeated operand, and any other operand
+        // shape keep the capability drain. The operation legality is reconciled
+        // with the checker primitive call fact at arm construction, not from
+        // the syntax kind.
         if (closureTree.node(parameterClosureValue).kind == ast::SyntaxKind::IdentExpr) {
           if (closureParameterCount < 1 || closureParameterCount > 2) {
             return rejectClosureCapability();
           }
           parameterBodyLeaves.add(parameterClosureValue);
         } else {
-          if (closureParameterCount != 2) { return rejectClosureCapability(); }
           const ast::NodeId binaryLeft(
               closureTree.node(parameterClosureValue).payload.words[ast::kBinaryExprLhsWord]);
           const ast::NodeId binaryRight(
               closureTree.node(parameterClosureValue).payload.words[ast::kBinaryExprRhsWord]);
-          if (!closureTree.contains(binaryLeft) ||
-              closureTree.node(binaryLeft).kind != ast::SyntaxKind::IdentExpr ||
-              !closureTree.contains(binaryRight) ||
-              closureTree.node(binaryRight).kind != ast::SyntaxKind::IdentExpr) {
+          if (!closureTree.contains(binaryLeft) || !closureTree.contains(binaryRight)) {
             return rejectClosureCapability();
           }
-          parameterBodyLeaves.add(binaryLeft);
-          parameterBodyLeaves.add(binaryRight);
+          const bool leftIsIdent = closureTree.node(binaryLeft).kind == ast::SyntaxKind::IdentExpr;
+          const bool rightIsIdent =
+              closureTree.node(binaryRight).kind == ast::SyntaxKind::IdentExpr;
+          const bool leftIsLiteral =
+              closureTree.node(binaryLeft).kind == ast::SyntaxKind::IntLiteral;
+          const bool rightIsLiteral =
+              closureTree.node(binaryRight).kind == ast::SyntaxKind::IntLiteral;
+          if (leftIsIdent && rightIsIdent) {
+            if (closureParameterCount != 2) { return rejectClosureCapability(); }
+            parameterBodyLeaves.add(binaryLeft);
+            parameterBodyLeaves.add(binaryRight);
+          } else if (closureParameterCount == 1 &&
+                     ((leftIsIdent && rightIsLiteral) || (leftIsLiteral && rightIsIdent))) {
+            parameterLiteralArithmetic = true;
+            parameterLiteralNode = leftIsLiteral ? binaryLeft : binaryRight;
+            parameterLiteralLeafNode = leftIsIdent ? binaryLeft : binaryRight;
+            parameterBodyLeaves.add(parameterLiteralLeafNode);
+          } else {
+            return rejectClosureCapability();
+          }
         }
         const ast::NodeId closureParameterListId(
             closureTree.node(closure.node).payload.words[parameterListWord]);
@@ -14375,7 +14403,15 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         if (resolvedParameterIndices.size() != parameterBodyLeaves.size()) {
           return rejectClosureCapability();
         }
-        if (parameterBodyLeaves.size() == 1) {
+        if (parameterLiteralArithmetic) {
+          // The sole identifier leaf resolves to the one declared parameter;
+          // the constant operand is reconciled to a checked literal fact at
+          // arm construction.
+          if (parameterBodyLeaves.size() != 1 || resolvedParameterIndices[0] != 0) {
+            return rejectClosureCapability();
+          }
+          parameterLiteralParameterIndex = resolvedParameterIndices[0];
+        } else if (parameterBodyLeaves.size() == 1) {
           returnedClosureParameter = resolvedParameterIndices[0];
         } else {
           parameterArithmetic = true;
@@ -14584,6 +14620,90 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                 zc::mv(ZC_ASSERT_NONNULL(leftArm)), zc::mv(ZC_ASSERT_NONNULL(rightArm)),
                 closureCallable.success, closureCallable.success, parameterBinaryOperation,
                 closureValueSpan.clone(), false, closureValue}}};
+          }
+          if (parameterLiteralArithmetic) {
+            // One declared parameter combined with one integer literal in one
+            // arithmetic binary. The parameter arm references the sole
+            // published parameter key; the other arm is a constant reconciled
+            // with a checked literal fact. The arms are emitted in source
+            // operand order; the operation and argument nodes reconcile with
+            // the checker primitive call fact.
+            const ast::NodeId binaryLeft(
+                closureTree.node(closureValue).payload.words[ast::kBinaryExprLhsWord]);
+            const ast::NodeId binaryRight(
+                closureTree.node(closureValue).payload.words[ast::kBinaryExprRhsWord]);
+            auto parameterLiteralCallIndex = factIndex(facts.calls(), closureValue);
+            if (parameterLiteralCallIndex == zc::none) { return zc::none; }
+            size_t parameterLiteralCallSlot = 0;
+            ZC_IF_SOME(value, parameterLiteralCallIndex) { parameterLiteralCallSlot = value; }
+            const auto& parameterLiteralInvocation =
+                facts.calls().entries()[parameterLiteralCallSlot].value.invocation;
+            if (!parameterLiteralInvocation.selected.variant()
+                     .is<checker::checked::PrimitiveCallable>() ||
+                parameterLiteralInvocation.arguments.size() != 2 ||
+                parameterLiteralInvocation.arguments[0].sourceNode != binaryLeft ||
+                parameterLiteralInvocation.arguments[1].sourceNode != binaryRight ||
+                parameterLiteralInvocation.receiver != zc::none ||
+                parameterLiteralInvocation.substitutions != zc::none ||
+                parameterLiteralInvocation.witnesses != zc::none ||
+                parameterLiteralInvocation.raises != zc::none ||
+                parameterLiteralInvocation.successType != closureCallable.success ||
+                parameterLiteralInvocation.resultType != closureCallable.success) {
+              return zc::none;
+            }
+            const auto parameterLiteralOperation = parameterLiteralInvocation.selected.variant()
+                                                       .get<checker::checked::PrimitiveCallable>()
+                                                       .operation;
+            if (!isScalarArithmeticOperation(parameterLiteralOperation)) { return zc::none; }
+            auto parameterLiteralFactIndex = factIndex(facts.literals(), parameterLiteralNode);
+            if (parameterLiteralFactIndex == zc::none) { return zc::none; }
+            size_t parameterLiteralFactSlot = 0;
+            ZC_IF_SOME(value, parameterLiteralFactIndex) { parameterLiteralFactSlot = value; }
+            const auto& constantFact = facts.literals().entries()[parameterLiteralFactSlot].value;
+            auto constantSpan =
+                bound.parsedModule().spanFor(closureTree.node(parameterLiteralNode).range);
+            if (constantFact.node != parameterLiteralNode ||
+                constantFact.type != closureCallable.success || constantSpan == zc::none ||
+                !sameSpan(constantFact.sourceSpan, ZC_ASSERT_NONNULL(constantSpan))) {
+              return zc::none;
+            }
+            const auto& publishedParameter =
+                closureCallable.parameters[parameterLiteralParameterIndex];
+            if (publishedParameter.type != closureCallable.success) { return zc::none; }
+            auto buildParameterLiteralArm =
+                [&](ast::NodeId operand) -> zc::Maybe<PendingConditionalArm> {
+              auto operandSpan = bound.parsedModule().spanFor(closureTree.node(operand).range);
+              if (operandSpan == zc::none) { return zc::none; }
+              if (operand == parameterLiteralLeafNode) {
+                auto reference = HirParameterReferenceExpression{
+                    HirNodeId(), publishedParameter.parameter.clone(), closureCallable.success,
+                    HirValueCategory::Place, ZC_ASSERT_NONNULL(operandSpan).clone()};
+                return PendingConditionalArm{zc::none,
+                                             zc::mv(reference),
+                                             zc::none,
+                                             closureCallable.success,
+                                             ZC_ASSERT_NONNULL(operandSpan).clone(),
+                                             zc::none,
+                                             operand};
+              }
+              return PendingConditionalArm{constantFact.literal.clone(),
+                                           zc::none,
+                                           zc::none,
+                                           closureCallable.success,
+                                           ZC_ASSERT_NONNULL(constantSpan).clone(),
+                                           zc::none,
+                                           parameterLiteralNode};
+            };
+            auto parameterLiteralLeftArm = buildParameterLiteralArm(binaryLeft);
+            auto parameterLiteralRightArm = buildParameterLiteralArm(binaryRight);
+            if (parameterLiteralLeftArm == zc::none || parameterLiteralRightArm == zc::none) {
+              return zc::none;
+            }
+            return PendingFunctionShape{ComparisonReturn{PendingEqualityCondition{
+                zc::mv(ZC_ASSERT_NONNULL(parameterLiteralLeftArm)),
+                zc::mv(ZC_ASSERT_NONNULL(parameterLiteralRightArm)), closureCallable.success,
+                closureCallable.success, parameterLiteralOperation, closureValueSpan.clone(), false,
+                closureValue}}};
           }
           const auto& returnedParameter = closureCallable.parameters[returnedClosureParameter];
           // The sole statement returns this parameter, so the checker

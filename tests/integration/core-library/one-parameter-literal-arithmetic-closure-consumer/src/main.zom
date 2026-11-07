@@ -1,0 +1,9 @@
+// RFC 0057 slice 2: a one-parameter closure whose body is one integer
+// arithmetic operation over its declared parameter and an integer literal.
+// Reached through a whole-local copy chain; the indirect call passes the one
+// source literal argument. The program exits 42 (41 plus 1).
+fn entry() -> i32 {
+  let f = (n: i32) -> i32 => n + 1;
+  let g = f;
+  return g(41);
+}
