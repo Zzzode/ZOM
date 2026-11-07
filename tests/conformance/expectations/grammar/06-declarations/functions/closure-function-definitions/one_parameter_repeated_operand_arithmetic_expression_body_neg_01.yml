@@ -1,0 +1,5 @@
+section: "§4 LambdaExpression repeated-operand expression body"
+covers_rule: "lambdaExpression, lambdaParameterList, lambdaExpressionBody, binaryExpression, identifier"
+expected: "ACCEPT"
+notes:
+  - "The source parses legally; the repeated one-parameter operand drains semantically (ZOM4099), never as a grammar rejection."
