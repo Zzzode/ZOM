@@ -1,0 +1,8 @@
+[package]
+name = "mixed_captured_parameter_expression_body_closure_consumer"
+version = "0.1.0"
+edition = "2026"
+
+[[bin]]
+name = "mixed_captured_parameter_expression_body_closure_consumer"
+path = "src/main.zom"

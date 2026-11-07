@@ -1,0 +1,13 @@
+// RFC 0057 slice 2 expr-body mixed form: a one-parameter paren-arrow lambda
+// with no block or return whose sole expression combines its declared by-value
+// i32 parameter with one Copy scalar captured by value. It is reached through a
+// whole-local copy chain; the indirect call passes the one declared literal
+// argument first and the captured local as the by-value environment argument
+// (declared-first ABI). The program exits 42 through the indirect-call ABI
+// (flagged experiment).
+fn entry() -> i32 {
+  let a: i32 = 40;
+  let f = (n: i32) -> i32 => n + a;
+  let g = f;
+  return g(2);
+}
