@@ -1001,7 +1001,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             tree.node(callNode).payload.words[ast::kCallExpressionArgsSizeWord]};
         // The admitted slice rides the scalar call ladder width: one or two
         // scalar-literal i32 arguments; wider arity and other carriers keep
-        // the capability drain.
+        // the capability drain. A zero-argument non-capturing code-pointer
+        // value call is not yet routed through the MIR/LIR empty-argument
+        // ladder and keeps its drain here.
         constexpr size_t kMaxClosureValueCallArguments = 2;
         if (!tree.contains(calleeNode) ||
             tree.node(calleeNode).kind != ast::SyntaxKind::IdentExpr ||
