@@ -1782,10 +1782,15 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         const ast::NodeId lambdaBody(closureTree.node(closureDefinition.node)
                                          .payload.words[ast::kLambdaExpressionExprBodyWord]);
         const bool lambdaYieldsIdentifier = parameterClosure || closureCaptures;
+        // A binary expression body is valid for the two-parameter arithmetic
+        // parameter closure or for a two-capture capturing closure; both carry
+        // the six-node binary stride. Capture-plus-literal and mixed
+        // expression bodies stay on the block-body spelling.
+        const bool lambdaBinaryBody =
+            parameterArithmeticClosure || (closureCaptures && binaryClosure);
         const bool lambdaBodyShapeValid =
             closureTree.contains(lambdaBody) && (!closureTree.contains(lambdaBlock)) &&
-            (parameterArithmeticClosure
-                 ? closureTree.node(lambdaBody).kind == ast::SyntaxKind::BinaryExpr
+            (lambdaBinaryBody ? closureTree.node(lambdaBody).kind == ast::SyntaxKind::BinaryExpr
              : lambdaYieldsIdentifier
                  ? closureTree.node(lambdaBody).kind == ast::SyntaxKind::IdentExpr
                  : isScalarLiteral(closureTree.node(lambdaBody).kind));
@@ -1835,11 +1840,33 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           }
         }
         if (closureCaptures) {
-          // A capturing expression-body lambda yields exactly one capture: the
-          // sole identifier must be the one canonical capture place node. The
-          // non-binary record reconciliation below recomputes its environment
-          // parameter key.
-          if (orderedCaptureFacts.size() != 1 || orderedCaptureFacts[0]->place.node != lambdaBody) {
+          // A one-capture expression body yields the single capture place
+          // directly; a two-capture expression body is an arithmetic binary
+          // whose two identifier operands are the two canonical capture place
+          // nodes in canonical order. The non-binary or binary record
+          // reconciliation below recomputes each environment parameter key.
+          if (orderedCaptureFacts.size() == 1) {
+            if (orderedCaptureFacts[0]->place.node != lambdaBody) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::InvalidFact, module,
+                                                  registries, index + 1);
+            }
+          } else if (orderedCaptureFacts.size() == 2 && binaryClosure) {
+            const ast::NodeId captureLeft(
+                closureTree.node(lambdaBody).payload.words[ast::kBinaryExprLhsWord]);
+            const ast::NodeId captureRight(
+                closureTree.node(lambdaBody).payload.words[ast::kBinaryExprRhsWord]);
+            if (!closureTree.contains(captureLeft) ||
+                closureTree.node(captureLeft).kind != ast::SyntaxKind::IdentExpr ||
+                !closureTree.contains(captureRight) ||
+                closureTree.node(captureRight).kind != ast::SyntaxKind::IdentExpr ||
+                orderedCaptureFacts[0]->place.node != captureLeft ||
+                orderedCaptureFacts[1]->place.node != captureRight) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::InvalidFact, module,
+                                                  registries, index + 1);
+            }
+          } else {
             return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                 ir::IrFailureKind::InvalidFact, module, registries,
                                                 index + 1);

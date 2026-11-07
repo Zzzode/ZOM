@@ -13963,27 +13963,51 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       identity::SourceSpan closureReturnSpan = closure.source.clone();
       identity::SourceSpan closureValueSpan = closure.source.clone();
       if (isCapturingClosure && !closureIsFunctionExpression) {
-        // Capturing expression-body paren-arrow lambda: it has zero declared
-        // parameters and one Copy capture, and its sole expression yields the
-        // captured identifier directly with no source block or return. The
-        // mixed parameter form and arithmetic expression bodies stay on the
-        // block-body `fn` slice. The body/return anchors stay sentinel and
-        // their spans reuse the closure source span.
-        if (mixedParameterCapture || orderedCaptureFacts.size() != 1) {
+        // Capturing expression-body paren-arrow lambda: zero declared
+        // parameters with no source block or return. It either yields one
+        // captured identifier directly (one capture) or combines two captured
+        // identifiers in one integer arithmetic expression body (two
+        // captures). The mixed parameter form and capture-plus-literal
+        // expression bodies stay on later slices. Body/return anchors stay
+        // sentinel and their spans reuse the closure source span.
+        if (mixedParameterCapture ||
+            (orderedCaptureFacts.size() != 1 && orderedCaptureFacts.size() != 2)) {
           return rejectClosureCapability();
         }
         const ast::NodeId lambdaBlock(
             closureTree.node(closure.node).payload.words[ast::kLambdaExpressionBodyWord]);
         const ast::NodeId lambdaBody(
             closureTree.node(closure.node).payload.words[ast::kLambdaExpressionExprBodyWord]);
-        if (closureTree.contains(lambdaBlock) || !closureTree.contains(lambdaBody) ||
-            closureTree.node(lambdaBody).kind != ast::SyntaxKind::IdentExpr ||
-            orderedCaptureFacts[0]->place.node != lambdaBody) {
+        if (closureTree.contains(lambdaBlock) || !closureTree.contains(lambdaBody)) {
           return rejectClosureCapability();
         }
         auto lambdaValueSpan = bound.parsedModule().spanFor(closureTree.node(lambdaBody).range);
         if (lambdaValueSpan == zc::none) { return rejectClosureCapability(); }
-        capturingLeaves.add(CapturingLeaf{lambdaBody, 0, /*declaredParameter=*/false});
+        if (orderedCaptureFacts.size() == 1) {
+          if (closureTree.node(lambdaBody).kind != ast::SyntaxKind::IdentExpr ||
+              orderedCaptureFacts[0]->place.node != lambdaBody) {
+            return rejectClosureCapability();
+          }
+          capturingLeaves.add(CapturingLeaf{lambdaBody, 0, /*declaredParameter=*/false});
+        } else {
+          // Two captures: an arithmetic binary whose two identifier operands
+          // name the two canonical capture places in canonical order.
+          const ast::NodeId lambdaLeft(
+              closureTree.node(lambdaBody).payload.words[ast::kBinaryExprLhsWord]);
+          const ast::NodeId lambdaRight(
+              closureTree.node(lambdaBody).payload.words[ast::kBinaryExprRhsWord]);
+          if (closureTree.node(lambdaBody).kind != ast::SyntaxKind::BinaryExpr ||
+              !closureTree.contains(lambdaLeft) ||
+              closureTree.node(lambdaLeft).kind != ast::SyntaxKind::IdentExpr ||
+              !closureTree.contains(lambdaRight) ||
+              closureTree.node(lambdaRight).kind != ast::SyntaxKind::IdentExpr ||
+              orderedCaptureFacts[0]->place.node != lambdaLeft ||
+              orderedCaptureFacts[1]->place.node != lambdaRight) {
+            return rejectClosureCapability();
+          }
+          capturingLeaves.add(CapturingLeaf{lambdaLeft, 0, /*declaredParameter=*/false});
+          capturingLeaves.add(CapturingLeaf{lambdaRight, 1, /*declaredParameter=*/false});
+        }
         closureValue = lambdaBody;
         closureValueSpan = ZC_ASSERT_NONNULL(lambdaValueSpan).clone();
       } else if (isCapturingClosure) {
