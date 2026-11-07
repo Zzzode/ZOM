@@ -1,0 +1,9 @@
+// RUN: cd %corpus && %zomc compile --check --experimental-captures 06-declarations/functions/closure-function-definitions/mixed_captured_parameter_arithmetic_expression_body_pos_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// RFC 0057 slice 2 positive: with --experimental-captures a one-parameter
+// expression-body lambda combining its declared parameter with one by-value
+// Copy capture in one arithmetic body lowers through the full pipeline. The
+// compiler exits 0 and emits no diagnostic.
+
+// CHECK-NOT: Error

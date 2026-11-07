@@ -1,0 +1,11 @@
+// RFC 0057 slice 2 negative: the mixed expression-body form admits exactly one
+// declared parameter plus one capture. A two-parameter expression-body lambda
+// that reads one declared parameter and one captured local is outside it, so
+// with the gate on the owning function keeps one ZOM4099 capability diagnostic
+// with zero incidents.
+fn entry() -> i32 {
+  let c: i32 = 2;
+  let f = (a: i32, b: i32) -> i32 => a + c;
+  let g = f;
+  return g(40);
+}
