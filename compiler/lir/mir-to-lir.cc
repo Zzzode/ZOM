@@ -7927,8 +7927,10 @@ zc::Maybe<Module> MirToLirLowering::lowerCodePointerCallModule(
   // with P scalar constant or captured-local arguments, stores the scalar
   // result, and returns it. The callee lowers to function ordinal 2; the caller
   // folds to the parameter-free zom.module_init entry.
-  if (callee.kind != mir::MirFunctionKind::Function || callee.locals.size() < 1 ||
-      callee.blocks.size() != 1) {
+  // P in 0..kMaxCallArguments and one block that either returns one scalar
+  // constant directly (P == 0, no locals) or returns a parameter / an admitted
+  // Use/Arithmetic/Comparison value over P leading parameter locals (P >= 1).
+  if (callee.kind != mir::MirFunctionKind::Function || callee.blocks.size() != 1) {
     return zc::none;
   }
   size_t parameterCount = 0;
@@ -7936,7 +7938,7 @@ zc::Maybe<Module> MirToLirLowering::lowerCodePointerCallModule(
          callee.locals[parameterCount].kind == mir::MirLocalKind::Parameter) {
     ++parameterCount;
   }
-  if (parameterCount < 1 || parameterCount > lir::kMaxCallArguments) { return zc::none; }
+  if (parameterCount > lir::kMaxCallArguments) { return zc::none; }
   zc::Vector<ValueType> parameterCarriers;
   for (size_t p = 0; p < parameterCount; ++p) {
     auto carrier = scalarCarrierFor(callee.locals[p].type, semanticTypes);
@@ -7950,9 +7952,56 @@ zc::Maybe<Module> MirToLirLowering::lowerCodePointerCallModule(
   if (resultCarrier == zc::none) { return zc::none; }
   const ValueType resultCarrierValue = ZC_REQUIRE_NONNULL(resultCarrier);
   zc::ArrayPtr<const ValueType> parameterCarrierPtr(parameterCarriers.asPtr());
-  auto calleeFunction = lowerScalarBodyCalleeFunction(callee, parameterCount, resultCarrierValue,
-                                                      parameterCarrierPtr, semanticTypes);
-  if (calleeFunction == zc::none) { return zc::none; }
+
+  zc::Maybe<Function> calleeFunction;
+  if (parameterCount == 0) {
+    // Zero-argument code-pointer callee: a parameterless, local-less single
+    // block that returns one scalar constant. The caller invokes it through
+    // the function pointer with an empty argument vector.
+    const auto& constantBlock = callee.blocks[0];
+    if (callee.locals.size() != 0 || constantBlock.statements.size() != 0 ||
+        constantBlock.terminator.kind() != mir::MirTerminatorKind::Return) {
+      return zc::none;
+    }
+    const auto& constantReturnMaybe = constantBlock.terminator.returnValue().value;
+    if (constantReturnMaybe == zc::none ||
+        ZC_ASSERT_NONNULL(constantReturnMaybe).kind() != mir::MirOperandKind::Constant ||
+        ZC_ASSERT_NONNULL(constantReturnMaybe).constantValue().type != callee.resultType) {
+      return zc::none;
+    }
+    const auto& constantReturn = ZC_ASSERT_NONNULL(constantReturnMaybe);
+    auto constantCalleeEntryId = LirBlockId::fromOrdinal(1);
+    if (constantCalleeEntryId == zc::none) { return zc::none; }
+    zc::Vector<BasicBlock> constantCalleeBlocks;
+    const auto floatValue = constantReturn.constantValue().value.floatValue();
+    if (floatValue != zc::none) {
+      if (resultCarrierValue.kind() != ValueTypeKind::Float) { return zc::none; }
+      auto floatConstant = floatConstantFrom(ZC_REQUIRE_NONNULL(floatValue), resultCarrierValue);
+      if (floatConstant == zc::none) { return zc::none; }
+      constantCalleeBlocks.add(
+          BasicBlock(ZC_REQUIRE_NONNULL(constantCalleeEntryId),
+                     Terminator::returnFloat(ZC_REQUIRE_NONNULL(floatConstant))));
+    } else {
+      const auto integer = constantReturn.constantValue().value.integerValue();
+      if (integer == zc::none || resultCarrierValue.kind() != ValueTypeKind::Integer) {
+        return zc::none;
+      }
+      auto bits = zeroExtendedBits(ZC_REQUIRE_NONNULL(integer), resultCarrierValue.integerWidth());
+      if (bits == zc::none) { return zc::none; }
+      auto integerConstant = IntegerConstant::from(resultCarrierValue, ZC_REQUIRE_NONNULL(bits));
+      if (integerConstant == zc::none) { return zc::none; }
+      constantCalleeBlocks.add(
+          BasicBlock(ZC_REQUIRE_NONNULL(constantCalleeEntryId),
+                     Terminator::returnInteger(ZC_REQUIRE_NONNULL(integerConstant))));
+    }
+    calleeFunction = Function(callee.owner, zc::heapString("zom.callee"), resultCarrierValue,
+                              zc::mv(constantCalleeBlocks));
+  } else {
+    if (callee.locals.size() < 1) { return zc::none; }
+    calleeFunction = lowerScalarBodyCalleeFunction(callee, parameterCount, resultCarrierValue,
+                                                   parameterCarrierPtr, semanticTypes);
+    if (calleeFunction == zc::none) { return zc::none; }
+  }
 
   // Caller: zero parameters, two blocks (entry address/copies + indirect call,
   // continuation return). The pointer operand may be the FunctionAddress local

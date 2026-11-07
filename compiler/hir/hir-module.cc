@@ -14995,7 +14995,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           returnStatementRecord.value != call.node ||
           returnStatementRecord.resultType != function.resultType || call.node != valueCallCallId ||
           call.function != pointerReference.node || call.resultType != function.resultType ||
-          call.arguments.size() < 1 || call.arguments.size() > kMaxClosureValueCallArguments) {
+          call.arguments.size() > kMaxClosureValueCallArguments) {
         return rejectValueCall();
       }
       // Every argument is a scalar constant.
@@ -15115,7 +15115,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       if (!sourceTree.contains(sourceCalleeNode) ||
           sourceTree.node(sourceCalleeNode).kind != ast::SyntaxKind::IdentExpr ||
           !sourceTree.contains(sourceTypeArguments) || !sourceTypeArguments.empty() ||
-          !sourceTree.contains(sourceArguments) || sourceArguments.size < 1 ||
+          !sourceTree.contains(sourceArguments) ||
           sourceArguments.size > kMaxClosureValueCallArguments ||
           sourceArguments.size != call.arguments.size()) {
         return rejectValueCall();
@@ -15130,6 +15130,35 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       zc::Vector<ast::NodeId> sourceArgumentNodes;
       for (size_t argumentIndex = 0; argumentIndex < sourceArguments.size; ++argumentIndex) {
         sourceArgumentNodes.add(sourceTree.list(sourceArguments)[argumentIndex]);
+      }
+      // An empty argument vector is admitted only for a zero-parameter
+      // closure. The published CallableSignature must carry no ordinary
+      // parameters, so a parameterized closure can never enter the
+      // empty-argument code-pointer ladder.
+      if (sourceArgumentNodes.size() == 0) {
+        const checker::signature::SemanticSignature* closureSignature = nullptr;
+        for (const auto& candidateSignature : signatures.definitions) {
+          if (candidateSignature.definition == address.closure) {
+            closureSignature = &candidateSignature;
+            break;
+          }
+        }
+        if (closureSignature == nullptr) {
+          for (const auto& candidateSignature :
+               candidate.impl->checkedModule.localSignatureFacts().signatures()) {
+            if (candidateSignature.definition == address.closure) {
+              closureSignature = &candidateSignature;
+              break;
+            }
+          }
+        }
+        if (closureSignature == nullptr ||
+            !closureSignature->payload.variant().is<checker::signature::CallableSignature>() ||
+            closureSignature->payload.variant()
+                    .get<checker::signature::CallableSignature>()
+                    .parameters.size() != 0) {
+          return rejectValueCall();
+        }
       }
       // Checker call and dispatch facts target the closure directly.
       auto checkedCallIndex = factIndex(facts.calls(), sourceCallNode);

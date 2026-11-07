@@ -4013,6 +4013,31 @@ mir::MirFunction buildParameterReturnCalleeP(identity::DefId owner, identity::Se
 // Interns the structural function type `fn(i32) -> i32` (with one parameter)
 // or `fn(i32, i32) -> i32` for the two-argument shape; the closure value carrier
 // lowers to an opaque pointer.
+// Builds the zero-argument code-pointer callee: no locals and one empty block
+// returning a scalar constant, the MIR shape of a parameterless scalar-literal
+// closure.
+mir::MirFunction buildConstantReturnCalleeP0(identity::DefId owner, identity::SemanticTypeId i32,
+                                             uint8_t constantValue) {
+  zc::Vector<mir::MirSourceScope> scopes;
+  scopes.add(mir::MirSourceScope{scopeId(1), zc::none, span()});
+  zc::Vector<mir::MirLocalDeclaration> locals;
+  zc::Vector<mir::MirStatement> statements;
+  zc::Vector<mir::MirBasicBlock> blocks;
+  blocks.add(mir::MirBasicBlock{
+      blockId(1), scopeId(1), zc::mv(statements),
+      mir::MirTerminator::returnValue(
+          mir::MirOperand::constant(i32, integerConstant(constantValue)), span())});
+  return mir::MirFunction{owner,
+                          mir::MirFunctionKind::Function,
+                          identity::DefinitionKind::Function,
+                          i32,
+                          span(),
+                          zc::mv(scopes),
+                          zc::mv(locals),
+                          zc::mv(blocks)};
+}
+
+// Interns the structural function type `fn(i32) -> i32` (with one parameter)
 static identity::SemanticTypeId internI32FunctionType(tests::TestSemanticTypeContext& context,
                                                       uint32_t parameterCount) {
   const auto i32 = context.internPrimitive(type::semantic::PrimitiveKind::I32);
@@ -4159,6 +4184,57 @@ ZC_TEST("Code pointer call with two arguments lowers to a verified LLVM module")
   ZC_EXPECT(ir.contains("store ptr @zom.callee"_zc));
   ZC_EXPECT(ir.contains("i32 40"_zc));
   ZC_EXPECT(ir.contains("i32 2"_zc));
+}
+
+// A zero-argument code-pointer call (a parameterless scalar-literal closure
+// reached through its stored function address) lowers to a verified LLVM
+// module: the callee is a parameterless constant-return function and the
+// caller invokes it through the pointer with an empty argument vector.
+ZC_TEST("Code pointer call with zero arguments lowers to a verified LLVM module") {
+  tests::TestSemanticTypeContext typeContext;
+  const auto i32 = typeContext.internPrimitive(type::semantic::PrimitiveKind::I32);
+  const auto callerOwner = tests::testDefinition(0);
+  const auto calleeOwner = tests::testDefinition(1);
+
+  auto callee = buildConstantReturnCalleeP0(calleeOwner, i32, /*constantValue=*/42);
+  const auto functionType = internI32FunctionType(typeContext, 0);
+  zc::Vector<uint8_t> arguments;
+  auto caller =
+      buildCodePointerCallCaller(callerOwner, calleeOwner, i32, functionType, zc::mv(arguments));
+
+  auto lir = lir::MirToLirLowering::lowerCodePointerCallModule(caller, callee,
+                                                               typeContext.semanticTypes());
+  ZC_REQUIRE(lir != zc::none);
+  const auto& lirModule = ZC_REQUIRE_NONNULL(lir);
+  ZC_EXPECT(lir::LirStructuralVerifier::verify(lirModule) == zc::none);
+  {
+    auto functions = zc::heapArray<const mir::MirFunction*>(2);
+    functions[0] = &caller;
+    functions[1] = &callee;
+    ZC_EXPECT(lir::TranslationValidator::validate(functions.asPtr(), lirModule,
+                                                  typeContext.semanticTypes()) == zc::none);
+  }
+
+  LlvmTranslator translator;
+  auto result = translator.translate(lirModule);
+  ZC_EXPECT(result.verified());
+  if (!result.verified()) { ZC_FAIL_EXPECT(result.diagnostic().cStr()); }
+
+  const auto ir = result.textualIr();
+  ZC_EXPECT(ir.contains("store ptr @zom.callee"_zc));
+  // An empty indirect call carries no argument list: `call i32 %...` with no
+  // following operands, never a direct `call i32 @`.
+  ZC_EXPECT(ir.contains("call i32"_zc));
+  ZC_EXPECT(!ir.contains("call i32 @"_zc));
+  ZC_EXPECT(ir.contains("ret i32 42"_zc));
+  ZC_EXPECT(ir.contains("zom.module_init"_zc));
+
+  const auto object = result.objectCode();
+  ZC_REQUIRE(object.size() >= 4);
+  ZC_EXPECT(object[0] == 0x7f);
+  ZC_EXPECT(object[1] == static_cast<uint8_t>('E'));
+  ZC_EXPECT(object[2] == static_cast<uint8_t>('L'));
+  ZC_EXPECT(object[3] == static_cast<uint8_t>('F'));
 }
 
 // Code-pointer call through one whole-local copy of the closure value:

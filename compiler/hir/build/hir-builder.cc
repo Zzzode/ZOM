@@ -999,17 +999,16 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         const ast::NodeList callArguments{
             tree.node(callNode).payload.words[ast::kCallExpressionArgsFirstWord],
             tree.node(callNode).payload.words[ast::kCallExpressionArgsSizeWord]};
-        // The admitted slice rides the scalar call ladder width: one or two
+        // The admitted slice rides the scalar call ladder width: zero to two
         // scalar-literal i32 arguments; wider arity and other carriers keep
-        // the capability drain. A zero-argument non-capturing code-pointer
-        // value call is not yet routed through the MIR/LIR empty-argument
-        // ladder and keeps its drain here.
+        // the capability drain. A zero-argument value call is admitted only for
+        // a zero-parameter closure; the empty-argument code-pointer ladder
+        // lowers its scalar-literal-return body with no call operands.
         constexpr size_t kMaxClosureValueCallArguments = 2;
         if (!tree.contains(calleeNode) ||
             tree.node(calleeNode).kind != ast::SyntaxKind::IdentExpr ||
             !tree.contains(callTypeArguments) || !callTypeArguments.empty() ||
-            !tree.contains(callArguments) || callArguments.size < 1 ||
-            callArguments.size > kMaxClosureValueCallArguments) {
+            !tree.contains(callArguments) || callArguments.size > kMaxClosureValueCallArguments) {
           return rejectValueCall();
         }
         {

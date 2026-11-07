@@ -1,0 +1,9 @@
+// RFC 0057 slice 2: a zero-capture, zero-parameter scalar-literal closure
+// reached through a whole-local copy chain. The indirect call carries an
+// empty argument vector and the parameterless callee returns a constant.
+// The program exits 42 natively.
+fn entry() -> i32 {
+  let f = () -> i32 => 42;
+  let g = f;
+  return g();
+}

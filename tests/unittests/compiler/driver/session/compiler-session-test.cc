@@ -664,6 +664,37 @@ ZC_TEST("CompilerSessionTest.LowersZeroCaptureClosureAliasCallToHirAndMir") {
   expectLowered("fn entry() -> i32 { let f = () -> i32 => 42; return f(); }\n"_zc);
 }
 
+ZC_TEST("CompilerSessionTest.ZeroArgumentCopiedClosureValueCallLowersToHirAndMir") {
+  // RFC 0057 slice 2: a zero-capture, zero-parameter scalar-literal closure
+  // reached through a whole-local copy chain lowers through the
+  // closure-address indirect-call value path with an empty argument vector.
+  // Both spellings publish HIR and MIR with zero diagnostics and zero
+  // incidents; the indirect call carries no arguments.
+  const auto expectLowered = [](zc::StringPtr source) {
+    auto session = packageSession(source);
+    ZC_REQUIRE(session->parseSources());
+    ZC_REQUIRE(session->bindSources());
+    ZC_EXPECT(session->checkSources());
+    ZC_EXPECT(!session->hasDiagnosticErrors());
+    ZC_EXPECT(session->getIncidents().empty());
+    ZC_REQUIRE(session->getVerifiedHirModules().size() == 1);
+    const auto& hir = session->getVerifiedHirModules()[0];
+    ZC_EXPECT(hir.functions().size() == 2);
+    ZC_EXPECT(hir.closureAddresses().size() == 1);
+    ZC_EXPECT(hir.indirectCalls().size() == 1);
+    ZC_EXPECT(hir.indirectCalls()[0].arguments.size() == 0);
+    ZC_EXPECT(hir.indirectCalls()[0].callee == hir.closureAddresses()[0].closure);
+    ZC_REQUIRE(session->getOwnershipCheckedMirModules().size() == 1);
+    ZC_EXPECT(session->getOwnershipCheckedMirModules()[0].builtMir().functions().size() == 2);
+  };
+  expectLowered(
+      "fn entry() -> i32 { let f = fn() -> i32 { return 42; }; "
+      "let g = f; return g(); }\n"_zc);
+  expectLowered(
+      "fn entry() -> i32 { let f = () -> i32 => 42; "
+      "let g = f; return g(); }\n"_zc);
+}
+
 ZC_TEST("CompilerSessionTest.ParameterizedBlockBodyLambdaClosureKeepsCapabilityDrain") {
   // RFC 0057 slice 1b admits a parameterized expression-body paren-arrow
   // lambda whose sole expression is a parameter reference, but a block-body
