@@ -1,6 +1,6 @@
 {
   "corpusRoot": "tests/conformance/corpus",
-  "count": 1118,
+  "count": 1120,
   "irChannel": false,
   "outputs": {
     "02-lexical/bigint_suffix_neg_01.zom": {
@@ -2567,6 +2567,10 @@
       "exitCode": 1,
       "sha256": "77bc8121af4f573e72399494c0b950ea1f22c9df886804e5435b6ecb511507e6"
     },
+    "06-declarations/functions/closure-function-definitions/closure_capture_literal_arithmetic_expression_body_neg_01.zom": {
+      "exitCode": 1,
+      "sha256": "a7e8472490819fc17cf98e87af48e20412e2452422b2c358103f40bf067d0dfe"
+    },
     "06-declarations/functions/closure-function-definitions/closure_capture_nested_binary_neg_01.zom": {
       "exitCode": 1,
       "sha256": "b22772a22302664749b94223410605f23edb8d8ad46e906d1010f51c2986131d"
@@ -2634,6 +2638,10 @@
     "06-declarations/functions/closure-function-definitions/raises.zom": {
       "exitCode": 1,
       "sha256": "42b9c25ce0bfa14be767cc7251c1f504ac2bbc72bff54ae442df07f3ab492aa0"
+    },
+    "06-declarations/functions/closure-function-definitions/two_captured_arithmetic_expression_body_pos_01.zom": {
+      "exitCode": 1,
+      "sha256": "7b5d6010b2f2ed4f495f16038ba959e9656d2299cdd6a1659add324869b81997"
     },
     "06-declarations/functions/closure-function-definitions/two_parameter_arithmetic_expression_body_pos_01.zom": {
       "exitCode": 0,
