@@ -1,0 +1,9 @@
+// RUN: cd %corpus && %zomc compile --check --experimental-captures 06-declarations/functions/closure-function-definitions/captured_literal_arithmetic_expression_body_pos_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// RFC 0057 slice 2 positive: with --experimental-captures a zero-parameter
+// expression-body lambda combining one by-value Copy capture with an integer
+// literal in one arithmetic body lowers through the full pipeline. The
+// compiler exits 0 and emits no diagnostic.
+
+// CHECK-NOT: Error

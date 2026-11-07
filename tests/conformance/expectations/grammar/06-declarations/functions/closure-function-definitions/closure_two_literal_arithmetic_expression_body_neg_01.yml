@@ -1,0 +1,5 @@
+section: "§4 LambdaExpression expression body two literals"
+covers_rule: "lambdaExpression, lambdaExpressionBody, binaryExpression, integerLiteral"
+expected: "ACCEPT"
+notes:
+  - "RFC 0057 slice 2: a two-literal arithmetic expression body parses legally; it drains semantically (ZOM4099 behind the flag) because it matches no closure body shape, not because the grammar rejects it."

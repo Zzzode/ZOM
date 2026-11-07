@@ -1,0 +1,12 @@
+// RFC 0057 slice 2 expr-body capture-plus-literal positive: a zero-parameter
+// paren-arrow lambda with no block or return that combines one initialized
+// read-only i32 local captured by value with an integer literal in one
+// arithmetic expression body, reached through a whole-local copy chain.
+// Admitted only behind the default-off --experimental-captures gate; without
+// it this source keeps the ZOM4099 capability drain.
+fn entry() -> i32 {
+  let a: i32 = 41;
+  let f = () -> i32 => a + 1;
+  let g = f;
+  return g();
+}

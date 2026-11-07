@@ -1,0 +1,5 @@
+section: "§4 LambdaExpression expression body capture with literal operand"
+covers_rule: "lambdaExpression, lambdaExpressionBody, binaryExpression, integerLiteral"
+expected: "ACCEPT"
+notes:
+  - "RFC 0057 slice 2: a capture-plus-literal arithmetic expression body parses legally; capture admission is a checker decision behind --experimental-captures, never a grammar one."
