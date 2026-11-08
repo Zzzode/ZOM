@@ -2334,6 +2334,9 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         const auto& binaryCallFact = facts.calls().entries()[binaryCallSlot].value;
         const auto& binaryInvocation = binaryCallFact.invocation;
         const auto& binarySelected = binaryInvocation.selected.variant();
+        // A relational comparison keeps integer/boolean operands but yields a
+        // boolean result, so the operand carrier (binaryRecord.operandType and
+        // each arm) is reconciled independently of the function result type.
         if (!sameSpan(block.sourceSpan, expectedBlockSpan) ||
             !sameSpan(returnRecord.sourceSpan, expectedReturnSpan) ||
             !sameSpan(function.sourceSpan, closureDefinition.source) ||
@@ -2343,10 +2346,12 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             returnRecord.resultType != function.resultType ||
             returnRecord.value != binaryRecord.node || binaryRecord.left != leftRecord.node ||
             binaryRecord.right != rightRecord.node ||
-            binaryRecord.operandType != function.resultType ||
+            binaryRecord.operandType != binaryInvocation.arguments[0].sourceType ||
+            binaryInvocation.arguments[1].sourceType != binaryRecord.operandType ||
             binaryRecord.type != function.resultType ||
             binaryRecord.category != HirValueCategory::Value ||
-            leftRecord.type != function.resultType || rightRecord.type != function.resultType ||
+            leftRecord.type != binaryRecord.operandType ||
+            rightRecord.type != binaryRecord.operandType ||
             leftRecord.category != HirValueCategory::Place ||
             rightRecord.category != HirValueCategory::Place ||
             leftRecord.parameter != ZC_ASSERT_NONNULL(expectedLeftKey) ||
@@ -2359,11 +2364,14 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             binaryInvocation.witnesses != zc::none || binaryInvocation.raises != zc::none ||
             binaryInvocation.successType != function.resultType ||
             binaryInvocation.resultType != function.resultType ||
-            !isScalarArithmeticOperation(
-                binarySelected.get<checker::checked::PrimitiveCallable>().operation) ||
+            (!isScalarArithmeticOperation(
+                 binarySelected.get<checker::checked::PrimitiveCallable>().operation) &&
+             !isScalarComparisonOperation(
+                 binarySelected.get<checker::checked::PrimitiveCallable>().operation)) ||
             binaryRecord.operation !=
                 binarySelected.get<checker::checked::PrimitiveCallable>().operation ||
-            !typeExists(function.resultType, semanticTypes)) {
+            !typeExists(function.resultType, semanticTypes) ||
+            !typeExists(binaryRecord.operandType, semanticTypes)) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                               ir::IrFailureKind::InvalidFact, module, registries,
                                               index + 1);

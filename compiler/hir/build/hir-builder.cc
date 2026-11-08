@@ -14564,10 +14564,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                publishedParameter.type, closure.source.clone()});
           }
           if (parameterArithmetic) {
-            // Two declared parameters combined in one arithmetic binary. Both
-            // arms reference a published parameter key; the operation and
-            // argument source nodes reconcile with the checker primitive call
-            // fact.
+            // Two declared parameters combined in one arithmetic or
+            // relational binary. Both arms reference a published parameter
+            // key; the operation and argument source nodes reconcile with
+            // the checker primitive call fact. A relational comparison has
+            // integer/boolean operand type but a boolean result type, so the
+            // arm carrier is the operand type while the condition result is
+            // the closure success type.
             const ast::NodeId binaryLeft(
                 closureTree.node(closureValue).payload.words[ast::kBinaryExprLhsWord]);
             const ast::NodeId binaryRight(
@@ -14594,20 +14597,28 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             const auto parameterBinaryOperation = parameterBinaryInvocation.selected.variant()
                                                       .get<checker::checked::PrimitiveCallable>()
                                                       .operation;
-            if (!isScalarArithmeticOperation(parameterBinaryOperation)) { return zc::none; }
+            if (!isScalarArithmeticOperation(parameterBinaryOperation) &&
+                !isScalarComparisonOperation(parameterBinaryOperation)) {
+              return zc::none;
+            }
+            const identity::SemanticTypeId operandType =
+                parameterBinaryInvocation.arguments[0].sourceType;
+            if (parameterBinaryInvocation.arguments[1].sourceType != operandType) {
+              return zc::none;
+            }
             auto buildParameterArm = [&](size_t parameterIndex,
                                          ast::NodeId leaf) -> zc::Maybe<PendingConditionalArm> {
               const auto& publishedParameter = closureCallable.parameters[parameterIndex];
-              if (publishedParameter.type != closureCallable.success) { return zc::none; }
+              if (publishedParameter.type != operandType) { return zc::none; }
               auto leafSpan = bound.parsedModule().spanFor(closureTree.node(leaf).range);
               if (leafSpan == zc::none) { return zc::none; }
               auto reference = HirParameterReferenceExpression{
-                  HirNodeId(), publishedParameter.parameter.clone(), closureCallable.success,
+                  HirNodeId(), publishedParameter.parameter.clone(), operandType,
                   HirValueCategory::Place, ZC_ASSERT_NONNULL(leafSpan).clone()};
               return PendingConditionalArm{zc::none,
                                            zc::mv(reference),
                                            zc::none,
-                                           closureCallable.success,
+                                           operandType,
                                            ZC_ASSERT_NONNULL(leafSpan).clone(),
                                            zc::none,
                                            leaf};
@@ -14617,7 +14628,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             if (leftArm == zc::none || rightArm == zc::none) { return zc::none; }
             return PendingFunctionShape{ComparisonReturn{PendingEqualityCondition{
                 zc::mv(ZC_ASSERT_NONNULL(leftArm)), zc::mv(ZC_ASSERT_NONNULL(rightArm)),
-                closureCallable.success, closureCallable.success, parameterBinaryOperation,
+                operandType, closureCallable.success, parameterBinaryOperation,
                 closureValueSpan.clone(), false, closureValue}}};
           }
           if (parameterLiteralArithmetic) {

@@ -7315,10 +7315,15 @@ zc::Maybe<Function> lowerScalarBodyCalleeFunction(
     const mir::MirFunction& callee, size_t parameterCount, const ValueType& resultCarrier,
     const zc::ArrayPtr<const ValueType> parameterCarriers,
     const type::SemanticTypeStore& semanticTypes) {
+  // The result carrier is independent of the parameter carriers: an arithmetic
+  // body shares one carrier, but a relational comparison body returns a boolean
+  // over integer parameters. Carrier consistency is enforced per role below:
+  // the identity branch requires the returned parameter to carry the result
+  // type, while the body branch requires every body local and the returned
+  // local to carry the result type.
   if (callee.kind != mir::MirFunctionKind::Function || callee.sourceScopes.size() != 1 ||
       callee.blocks.size() != 1 || callee.locals.size() < 1 || parameterCount < 1 ||
-      parameterCount > kMaxCallArguments || parameterCount != parameterCarriers.size() ||
-      callee.resultType != callee.locals[0].type) {
+      parameterCount > kMaxCallArguments || parameterCount != parameterCarriers.size()) {
     return zc::none;
   }
   const auto& calleeBlock = callee.blocks[0];
@@ -7355,7 +7360,8 @@ zc::Maybe<Function> lowerScalarBodyCalleeFunction(
       }
       bool namesParameter = false;
       for (size_t index = 0; index < parameterCount; ++index) {
-        if (value.place().local() == callee.locals[index].id) {
+        if (value.place().local() == callee.locals[index].id &&
+            callee.locals[index].type == callee.resultType) {
           namesParameter = true;
           calleeReturnOrdinal = callee.locals[index].id.ordinal();
           break;
@@ -7434,6 +7440,7 @@ zc::Maybe<Function> lowerScalarBodyCalleeFunction(
       }
     }
     const auto& lastLocal = callee.locals[callee.locals.size() - 1];
+    if (lastLocal.type != callee.resultType) { return zc::none; }
     calleeReturnOrdinal = lastLocal.id.ordinal();
     ZC_IF_SOME(value, calleeReturnValue) {
       if (value.kind() == mir::MirOperandKind::Constant || value.place().local() != lastLocal.id ||

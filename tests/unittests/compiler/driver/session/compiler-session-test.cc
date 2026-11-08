@@ -1146,6 +1146,48 @@ ZC_TEST("CompilerSessionTest.TwoParameterArithmeticExpressionBodyClosureLowersTo
   ZC_EXPECT(session->getOwnershipCheckedMirModules()[0].builtMir().functions().size() == 2);
 }
 
+ZC_TEST("CompilerSessionTest.TwoParameterComparisonClosureLowersToHirAndMir") {
+  // RFC 0057 slice 2: a non-capturing two-parameter closure whose body is one
+  // relational comparison over both declared i32 parameters, yielding bool
+  // (`(a, b) -> bool => a < b`), reached through a whole-local copy chain
+  // (`let g = f; g(1, 2)`). The closure carries the two i32 parameters while
+  // its result type is bool; the indirect call passes two literal arguments.
+  // HIR and MIR publish with zero diagnostics and zero incidents.
+  auto session = packageSession(
+      "fn entry() -> bool { let f = (a: i32, b: i32) -> bool => a < b; "
+      "let g = f; return g(1, 2); }\n"_zc);
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(session->checkSources());
+  ZC_EXPECT(!session->hasDiagnosticErrors());
+  ZC_EXPECT(session->getIncidents().empty());
+  ZC_REQUIRE(session->getVerifiedHirModules().size() == 1);
+  const auto& hir = session->getVerifiedHirModules()[0];
+  ZC_EXPECT(hir.functions().size() == 2);
+  ZC_EXPECT(hir.closureAddresses().size() == 1);
+  ZC_EXPECT(hir.indirectCalls().size() == 1);
+  ZC_EXPECT(hir.primitiveBinaryOperations().size() == 1);
+  const auto& comparison = hir.primitiveBinaryOperations()[0];
+  ZC_EXPECT(comparison.operandType != comparison.type);
+  const auto& indirectCall = hir.indirectCalls()[0];
+  ZC_EXPECT(indirectCall.arguments.size() == 2);
+  ZC_EXPECT(indirectCall.arguments[0].value != zc::none);
+  ZC_EXPECT(indirectCall.arguments[1].value != zc::none);
+  ZC_EXPECT(indirectCall.callee == hir.closureAddresses()[0].closure);
+  size_t parameterBearingFunctions = 0;
+  size_t closureParameterTotal = 0;
+  for (const auto& function : hir.functions()) {
+    if (function.parameters.size() == 0) { continue; }
+    ++parameterBearingFunctions;
+    closureParameterTotal += function.parameters.size();
+  }
+  ZC_EXPECT(parameterBearingFunctions == 1);
+  ZC_EXPECT(closureParameterTotal == 2);
+  ZC_REQUIRE(session->getOwnershipCheckedMirModules().size() == 1);
+  ZC_EXPECT(session->getOwnershipCheckedMirModules()[0].builtMir().functions().size() == 2);
+}
+
 ZC_TEST("CompilerSessionTest.CapturedCopiedClosureValueCallLowersToHirAndMir") {
   // RFC 0057 slice 2 captured-value edge (flagged): a one-capture closure
   // value reached through a whole-local copy chain (`let g = f; g()`) lowers
