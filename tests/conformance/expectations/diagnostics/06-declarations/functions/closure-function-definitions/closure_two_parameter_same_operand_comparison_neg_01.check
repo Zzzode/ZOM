@@ -1,0 +1,8 @@
+// RUN: cd %corpus && ! %zomc compile --check --experimental-captures 06-declarations/functions/closure-function-definitions/closure_two_parameter_same_operand_comparison_neg_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// The owning function keeps one capability diagnostic and never reports an
+// internal incident.
+
+// CHECK: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
+// CHECK-NOT: internal compiler error

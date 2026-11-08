@@ -1,0 +1,11 @@
+// RFC 0057 slice 2 two-parameter relational closure: a non-capturing
+// expression-body paren-arrow lambda with two declared by-value i32 parameters
+// whose body is one less-than comparison over both parameters, yielding bool.
+// It is reached through a whole-local copy chain; the indirect call passes the
+// two source literal arguments. The boolean result carrier is independent of
+// the i32 parameter carriers. The program exits 1 because 1 < 2 is true.
+fn entry() -> bool {
+  let f = (a: i32, b: i32) -> bool => a < b;
+  let g = f;
+  return g(1, 2);
+}

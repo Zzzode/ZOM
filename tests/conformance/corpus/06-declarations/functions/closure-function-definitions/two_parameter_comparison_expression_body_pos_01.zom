@@ -1,0 +1,9 @@
+// RFC 0057 slice 2: a non-capturing two-parameter expression-body lambda
+// whose sole expression is one relational comparison binary over both declared
+// parameters, yielding a boolean result, reached through a whole-local copy
+// chain. This needs no experimental capture gate because it captures nothing.
+fn entry() -> bool {
+  let f = (a: i32, b: i32) -> bool => a < b;
+  let g = f;
+  return g(1, 2);
+}
