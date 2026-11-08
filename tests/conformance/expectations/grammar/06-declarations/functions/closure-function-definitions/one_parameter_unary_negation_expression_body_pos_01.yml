@@ -1,0 +1,5 @@
+section: "§4 LambdaExpression one-parameter unary expression body"
+covers_rule: "lambdaExpression, lambdaParameterList, lambdaExpressionBody, unaryExpression, identifier"
+expected: "ACCEPT"
+notes:
+  - "RFC 0057 slice 2: a one-parameter unary expression-body lambda parses legally; lowering is a compiler capability decision, never a grammar one."

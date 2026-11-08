@@ -1,0 +1,9 @@
+// RFC 0057 slice 2 negative: a nested unary over the one declared parameter
+// (`--n`) does not name the flat one-operand unary shape the slice admits, so
+// the owning function keeps one ZOM4099 capability diagnostic with zero
+// incidents. Nested closure bodies remain a separate deferred wall.
+fn entry() -> i32 {
+  let f = (n: i32) -> i32 => --n;
+  let g = f;
+  return g(5);
+}

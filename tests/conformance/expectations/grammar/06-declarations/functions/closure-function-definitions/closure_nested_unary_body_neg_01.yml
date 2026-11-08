@@ -1,0 +1,5 @@
+section: "§4 LambdaExpression expression body"
+covers_rule: "lambdaExpression, lambdaParameterList, lambdaExpressionBody, unaryExpression"
+expected: "ACCEPT"
+notes:
+  - "The nested unary source parses legally; it drains semantically (ZOM4099), never as a grammar rejection."

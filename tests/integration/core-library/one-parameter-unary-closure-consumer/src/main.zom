@@ -1,0 +1,12 @@
+// RFC 0057 slice 2 one-parameter unary closure: a non-capturing
+// expression-body paren-arrow lambda with one declared by-value i32 parameter
+// whose sole body is one integer unary negation over that parameter. The
+// builder desugars `-n` to the synthetic-constant binary `0 - n`, so it is
+// reached through a whole-local copy chain and the indirect call passes one
+// literal argument. The program exits 1 because -255 truncates to the low
+// byte 1 through the indirect-call ABI.
+fn entry() -> i32 {
+  let f = (n: i32) -> i32 => -n;
+  let g = f;
+  return g(255);
+}
