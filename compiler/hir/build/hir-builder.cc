@@ -13963,6 +13963,14 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       ast::NodeId parameterLiteralNode;
       ast::NodeId parameterLiteralLeafNode;
       size_t parameterLiteralParameterIndex = 0;
+      // RFC 0057 slice 2 one-parameter unary form: a non-capturing closure
+      // whose sole body value is one primitive unary operation over its one
+      // declared parameter (`(n) -> i32 => -n`). The builder desugars the
+      // unary to a flat parameter-plus-synthetic-constant binary, so the
+      // resulting shape is one parameter-reference arm and one constant arm.
+      bool parameterUnaryClosure = false;
+      ast::NodeId parameterUnaryNode;
+      ast::NodeId parameterUnaryOperandNode;
       // Source anchors and spans. The lambda spelling has no source block or
       // return: hirBodyAnchor/hirReturnAnchor stay sentinel and their spans
       // reuse the closure source span, while the value anchors the body
@@ -14291,7 +14299,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               closureTree.node(closureShape.returnStatement).kind != ast::SyntaxKind::ReturnStmt ||
               declaredReturnValue != closureShape.value ||
               (closureTree.node(closureShape.value).kind != ast::SyntaxKind::IdentExpr &&
-               closureTree.node(closureShape.value).kind != ast::SyntaxKind::BinaryExpr)) {
+               closureTree.node(closureShape.value).kind != ast::SyntaxKind::BinaryExpr &&
+               closureTree.node(closureShape.value).kind != ast::SyntaxKind::UnaryExpression)) {
             return rejectClosureCapability();
           }
           auto soleItem = statementItem(closureTree, closureTree.list(closureStatements)[0]);
@@ -14308,7 +14317,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               closureTree.node(closure.node).payload.words[ast::kLambdaExpressionExprBodyWord]);
           if (closureTree.contains(lambdaBlock) || !closureTree.contains(lambdaBody) ||
               (closureTree.node(lambdaBody).kind != ast::SyntaxKind::IdentExpr &&
-               closureTree.node(lambdaBody).kind != ast::SyntaxKind::BinaryExpr)) {
+               closureTree.node(lambdaBody).kind != ast::SyntaxKind::BinaryExpr &&
+               closureTree.node(lambdaBody).kind != ast::SyntaxKind::UnaryExpression)) {
             return rejectClosureCapability();
           }
           parameterClosureValue = lambdaBody;
@@ -14322,7 +14332,23 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         // shape keep the capability drain. The operation legality is reconciled
         // with the checker primitive call fact at arm construction, not from
         // the syntax kind.
-        if (closureTree.node(parameterClosureValue).kind == ast::SyntaxKind::IdentExpr) {
+        if (closureTree.node(parameterClosureValue).kind == ast::SyntaxKind::UnaryExpression) {
+          // A primitive unary over the sole declared parameter. The operand
+          // must be the one parameter identifier; the operation and its
+          // desugared binary form are reconciled against the checker unary
+          // call fact at shape construction below.
+          if (closureParameterCount != 1) { return rejectClosureCapability(); }
+          const ast::NodeId unaryOperand(closureTree.node(parameterClosureValue)
+                                             .payload.words[ast::kUnaryExpressionOperandWord]);
+          if (!closureTree.contains(unaryOperand) ||
+              closureTree.node(unaryOperand).kind != ast::SyntaxKind::IdentExpr) {
+            return rejectClosureCapability();
+          }
+          parameterUnaryClosure = true;
+          parameterUnaryNode = parameterClosureValue;
+          parameterUnaryOperandNode = unaryOperand;
+          parameterBodyLeaves.add(unaryOperand);
+        } else if (closureTree.node(parameterClosureValue).kind == ast::SyntaxKind::IdentExpr) {
           if (closureParameterCount < 1 || closureParameterCount > 2) {
             return rejectClosureCapability();
           }
@@ -14562,6 +14588,72 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           for (const auto& publishedParameter : closureCallable.parameters) {
             closureParameters.add(HirParameter{publishedParameter.parameter.clone(),
                                                publishedParameter.type, closure.source.clone()});
+          }
+          if (parameterUnaryClosure) {
+            // One declared parameter combined with a synthetic constant in one
+            // desugared binary. The unary call fact keys on the unary
+            // expression node and carries the one parameter argument; the
+            // desugar supplies the equivalent integer binary operation and the
+            // synthetic constant (zero for Neg/UnaryPlus, -1 for BitNot), which
+            // has no source node or literal fact.
+            auto unaryCallIndex = factIndex(facts.calls(), parameterUnaryNode);
+            if (unaryCallIndex == zc::none) { return zc::none; }
+            size_t unaryCallSlot = 0;
+            ZC_IF_SOME(value, unaryCallIndex) { unaryCallSlot = value; }
+            const auto& unaryInvocation = facts.calls().entries()[unaryCallSlot].value.invocation;
+            if (!unaryInvocation.selected.variant().is<checker::checked::PrimitiveCallable>() ||
+                unaryInvocation.arguments.size() != 1 ||
+                unaryInvocation.arguments[0].sourceNode != parameterUnaryOperandNode ||
+                unaryInvocation.receiver != zc::none || unaryInvocation.substitutions != zc::none ||
+                unaryInvocation.witnesses != zc::none || unaryInvocation.raises != zc::none ||
+                unaryInvocation.successType != closureCallable.success ||
+                unaryInvocation.resultType != closureCallable.success) {
+              return zc::none;
+            }
+            const auto unaryOperation = unaryInvocation.selected.variant()
+                                            .get<checker::checked::PrimitiveCallable>()
+                                            .operation;
+            if (!isScalarUnaryOperation(unaryOperation)) { return zc::none; }
+            auto unaryKind =
+                primitiveKindOf(checkedModule.semanticTypes(), closureCallable.success);
+            if (unaryKind == zc::none) { return zc::none; }
+            // The closure carrier is integer scalar only. LogicalNot is the
+            // sole boolean unary operator and desugars to a boolean equality;
+            // bool-typed closures are a separate carrier wall, so it keeps the
+            // capability drain instead of entering the integer unary slice.
+            if (ZC_ASSERT_NONNULL(unaryKind) == type::semantic::PrimitiveKind::Bool) {
+              return zc::none;
+            }
+            auto unaryDesugar = desugarPrimitiveUnary(unaryOperation, ZC_ASSERT_NONNULL(unaryKind));
+            if (unaryDesugar == zc::none) { return zc::none; }
+            const auto& publishedParameter = closureCallable.parameters[0];
+            if (publishedParameter.type != closureCallable.success) { return zc::none; }
+            auto operandSpan =
+                bound.parsedModule().spanFor(closureTree.node(parameterUnaryOperandNode).range);
+            if (operandSpan == zc::none) { return zc::none; }
+            auto parameterArm = PendingConditionalArm{
+                zc::none,
+                HirParameterReferenceExpression{HirNodeId(), publishedParameter.parameter.clone(),
+                                                closureCallable.success, HirValueCategory::Place,
+                                                ZC_ASSERT_NONNULL(operandSpan).clone()},
+                zc::none,
+                closureCallable.success,
+                ZC_ASSERT_NONNULL(operandSpan).clone(),
+                zc::none,
+                parameterUnaryOperandNode};
+            auto syntheticArm = PendingConditionalArm{
+                ZC_ASSERT_NONNULL(unaryDesugar).syntheticValue.clone(), zc::none, zc::none,
+                closureCallable.success, closureValueSpan.clone()};
+            if (ZC_ASSERT_NONNULL(unaryDesugar).syntheticOnLeft) {
+              return PendingFunctionShape{ComparisonReturn{PendingEqualityCondition{
+                  zc::mv(syntheticArm), zc::mv(parameterArm), closureCallable.success,
+                  closureCallable.success, ZC_ASSERT_NONNULL(unaryDesugar).binaryOperation,
+                  closureValueSpan.clone(), true, parameterUnaryNode}}};
+            }
+            return PendingFunctionShape{ComparisonReturn{PendingEqualityCondition{
+                zc::mv(parameterArm), zc::mv(syntheticArm), closureCallable.success,
+                closureCallable.success, ZC_ASSERT_NONNULL(unaryDesugar).binaryOperation,
+                closureValueSpan.clone(), true, parameterUnaryNode}}};
           }
           if (parameterArithmetic) {
             // Two declared parameters combined in one arithmetic or

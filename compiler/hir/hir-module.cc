@@ -1336,6 +1336,53 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           }
         }
       }
+      // RFC 0057 slice 2 one-parameter unary form: a non-capturing closure
+      // with one declared parameter whose sole body value is a primitive unary
+      // operation over that parameter (`(n) -> i32 => -n`). The builder
+      // desugars it to a parameter-plus-synthetic-constant binary, so the
+      // closure occupies the six-node binary stride with one parameter
+      // reference and one synthetic scalar literal that carries no checker
+      // literal fact.
+      bool parameterUnaryClosure = false;
+      bool parameterUnarySyntheticOnLeft = false;
+      ast::NodeId parameterUnaryIdentifierNode;
+      if (parameterClosure && closureParameterCount == 1) {
+        ast::NodeId parameterUnaryValue;
+        if (closureIsFunctionExpression) {
+          auto probeShape =
+              functionReturnShape(closureTree, closureTree.node(closureDefinition.node));
+          if (probeShape != zc::none) { parameterUnaryValue = ZC_ASSERT_NONNULL(probeShape).value; }
+        } else {
+          const ast::NodeId probeBlock(closureTree.node(closureDefinition.node)
+                                           .payload.words[ast::kLambdaExpressionBodyWord]);
+          if (!closureTree.contains(probeBlock)) {
+            parameterUnaryValue =
+                ast::NodeId(closureTree.node(closureDefinition.node)
+                                .payload.words[ast::kLambdaExpressionExprBodyWord]);
+          }
+        }
+        if (closureTree.contains(parameterUnaryValue) &&
+            closureTree.node(parameterUnaryValue).kind == ast::SyntaxKind::UnaryExpression) {
+          const auto unaryOperator = static_cast<ast::UnaryOperatorKind>(
+              closureTree.node(parameterUnaryValue).payload.words[ast::kUnaryExpressionOpWord]);
+          const ast::NodeId probeOperand(closureTree.node(parameterUnaryValue)
+                                             .payload.words[ast::kUnaryExpressionOperandWord]);
+          const bool isPrimitiveUnary = unaryOperator == ast::UnaryOperatorKind::Plus ||
+                                        unaryOperator == ast::UnaryOperatorKind::Minus ||
+                                        unaryOperator == ast::UnaryOperatorKind::BitNot;
+          // LogicalNot is excluded: it is the sole boolean unary operator and
+          // bool-typed closures stay on the separate bool carrier wall, so the
+          // builder never admits one into this integer unary slice.
+          if (isPrimitiveUnary && closureTree.contains(probeOperand) &&
+              closureTree.node(probeOperand).kind == ast::SyntaxKind::IdentExpr) {
+            parameterUnaryClosure = true;
+            // Neg desugars to 0 - x (synthetic constant on the left); Plus
+            // and BitNot place the synthetic constant on the right.
+            parameterUnarySyntheticOnLeft = unaryOperator == ast::UnaryOperatorKind::Minus;
+            parameterUnaryIdentifierNode = probeOperand;
+          }
+        }
+      }
       if (!closureCaptures && closureParameterCount != 0 && !parameterClosure) {
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                             ir::IrFailureKind::InvalidFact, module, registries,
@@ -1407,11 +1454,12 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       // parameter). Both occupy the same six-node stride; the operand key and
       // the literal source node differ and are reconciled below.
       const bool oneReferenceOneLiteralBinary =
-          captureLiteralArithmetic || parameterLiteralArithmeticClosure;
-      const bool literalOperandIsLeft =
-          captureLiteralArithmetic ? captureLiteralIsLeft : parameterLiteralIsLeft;
+          captureLiteralArithmetic || parameterLiteralArithmeticClosure || parameterUnaryClosure;
+      const bool literalOperandIsLeft = captureLiteralArithmetic ? captureLiteralIsLeft
+                                        : parameterUnaryClosure  ? parameterUnarySyntheticOnLeft
+                                                                 : parameterLiteralIsLeft;
       if (mixedParameterCapture || captureLiteralArithmetic || parameterArithmeticClosure ||
-          parameterLiteralArithmeticClosure) {
+          parameterLiteralArithmeticClosure || parameterUnaryClosure) {
         binaryClosure = true;
       }
       // A one-capture closure occupies four source-preorder node ids (function,
@@ -1716,6 +1764,15 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                   }
                 }
               }
+            } else if (parameterUnaryClosure) {
+              // The sole statement returns a primitive unary over the one
+              // declared parameter; its operand is reconciled below.
+              if (closureTree.node(closureSource.value).kind != ast::SyntaxKind::UnaryExpression ||
+                  ast::NodeId(closureTree.node(closureSource.value)
+                                  .payload.words[ast::kUnaryExpressionOperandWord]) !=
+                      parameterUnaryIdentifierNode) {
+                closureSourceValueValid = false;
+              }
             } else if (closureTree.node(closureSource.value).kind != ast::SyntaxKind::IdentExpr) {
               closureSourceValueValid = false;
             }
@@ -1826,12 +1883,22 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           }
         }
         if (closureSourceValueValid && parameterClosure && !parameterArithmeticClosure &&
-            !parameterLiteralArithmeticClosure) {
+            !parameterLiteralArithmeticClosure && !parameterUnaryClosure) {
           // The return identifier must materialize to the owner-local
           // CallableParameter binding at one of the closure's declared
           // parameter nodes.
           if (!namesOneDeclaredParameter(closureSource.value, ast::kFunctionExpressionParamsIdWord,
                                          returnedClosureParameterIndex)) {
+            closureSourceValueValid = false;
+          }
+        }
+        if (closureSourceValueValid && parameterUnaryClosure) {
+          // The unary operand must materialize to the one declared parameter at
+          // ordinary position zero.
+          size_t leafIndex = 0;
+          if (!namesOneDeclaredParameter(parameterUnaryIdentifierNode,
+                                         ast::kFunctionExpressionParamsIdWord, leafIndex) ||
+              leafIndex != 0) {
             closureSourceValueValid = false;
           }
         }
@@ -1896,9 +1963,13 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         const bool lambdaBinaryBody = parameterArithmeticClosure ||
                                       parameterLiteralArithmeticClosure ||
                                       (closureCaptures && binaryClosure);
+        // The unary spelling desugars to the six-node binary HIR stride even
+        // though its source body is a UnaryExpression rather than a BinaryExpr.
         const bool lambdaBodyShapeValid =
             closureTree.contains(lambdaBody) && (!closureTree.contains(lambdaBlock)) &&
-            (lambdaBinaryBody ? closureTree.node(lambdaBody).kind == ast::SyntaxKind::BinaryExpr
+            (parameterUnaryClosure
+                 ? closureTree.node(lambdaBody).kind == ast::SyntaxKind::UnaryExpression
+             : lambdaBinaryBody ? closureTree.node(lambdaBody).kind == ast::SyntaxKind::BinaryExpr
              : lambdaYieldsIdentifier
                  ? closureTree.node(lambdaBody).kind == ast::SyntaxKind::IdentExpr
                  : isScalarLiteral(closureTree.node(lambdaBody).kind));
@@ -1908,11 +1979,25 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                               index + 1);
         }
         if (parameterClosure && !parameterArithmeticClosure && !parameterLiteralArithmeticClosure &&
+            !parameterUnaryClosure &&
             !namesOneDeclaredParameter(lambdaBody, ast::kLambdaExpressionParamsIdWord,
                                        returnedClosureParameterIndex)) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                               ir::IrFailureKind::InvalidFact, module, registries,
                                               index + 1);
+        }
+        if (parameterUnaryClosure) {
+          // The unary operand must name the sole declared parameter at ordinary
+          // position zero.
+          size_t lambdaUnaryParameterIndex = 0;
+          if (!namesOneDeclaredParameter(parameterUnaryIdentifierNode,
+                                         ast::kLambdaExpressionParamsIdWord,
+                                         lambdaUnaryParameterIndex) ||
+              lambdaUnaryParameterIndex != 0) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
         }
         if (parameterArithmeticClosure) {
           // The two binary operands must name two distinct declared parameters
@@ -2168,6 +2253,96 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                 captureBinarySelected.get<checker::checked::PrimitiveCallable>().operation) ||
             binaryRecord.operation !=
                 captureBinarySelected.get<checker::checked::PrimitiveCallable>().operation ||
+            !typeExists(function.resultType, semanticTypes)) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+      } else if (binaryClosure && parameterUnaryClosure) {
+        // One-parameter unary closure desugared to a parameter-plus-synthetic-
+        // constant binary. The real operand is the sole declared parameter and
+        // the other arm is a synthetic scalar constant with no checker literal
+        // fact. The checked call fact keys on the unary expression node and
+        // carries exactly one argument; the HIR binary is flagged as a unary
+        // desugar whose operation is the equivalent binary operator.
+        const auto& binaryRecord = ZC_ASSERT_NONNULL(closureBinary);
+        const auto& literalRecord = ZC_ASSERT_NONNULL(closureLiteral);
+        const auto& paramRecord = parameterUnarySyntheticOnLeft
+                                      ? ZC_ASSERT_NONNULL(closureRightParamRef)
+                                      : ZC_ASSERT_NONNULL(closureLeftParamRef);
+        auto operandSpan =
+            bound.parsedModule().spanFor(closureTree.node(parameterUnaryIdentifierNode).range);
+        const identity::CallableParameterKey expectedDeclaredKey =
+            earlyCallable.parameters[0].parameter.clone();
+        auto unaryCallIndex = factIndex(facts.calls(), closureValue);
+        if (operandSpan == zc::none || unaryCallIndex == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        size_t unaryCallSlot = 0;
+        ZC_IF_SOME(value, unaryCallIndex) { unaryCallSlot = value; }
+        const auto& unaryCallFact = facts.calls().entries()[unaryCallSlot].value;
+        const auto& unaryInvocation = unaryCallFact.invocation;
+        const auto& unarySelected = unaryInvocation.selected.variant();
+        if (!unarySelected.is<checker::checked::PrimitiveCallable>()) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        const auto unaryOperation =
+            unarySelected.get<checker::checked::PrimitiveCallable>().operation;
+        // Independent cross-check of the builder desugar: the unary operator
+        // maps to exactly one equivalent binary operator.
+        checker::PrimitiveOperation expectedBinaryOperation;
+        switch (unaryOperation) {
+          case checker::PrimitiveOperation::Neg:
+            expectedBinaryOperation = checker::PrimitiveOperation::Sub;
+            break;
+          case checker::PrimitiveOperation::UnaryPlus:
+            expectedBinaryOperation = checker::PrimitiveOperation::Add;
+            break;
+          case checker::PrimitiveOperation::BitNot:
+            expectedBinaryOperation = checker::PrimitiveOperation::BitXor;
+            break;
+          case checker::PrimitiveOperation::LogicalNot:
+            expectedBinaryOperation = checker::PrimitiveOperation::Eq;
+            break;
+          default:
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+        }
+        const HirNodeId expectedLeftId =
+            parameterUnarySyntheticOnLeft ? literalRecord.node : paramRecord.node;
+        const HirNodeId expectedRightId =
+            parameterUnarySyntheticOnLeft ? paramRecord.node : literalRecord.node;
+        if (!sameSpan(block.sourceSpan, expectedBlockSpan) ||
+            !sameSpan(returnRecord.sourceSpan, expectedReturnSpan) ||
+            !sameSpan(function.sourceSpan, closureDefinition.source) ||
+            !sameSpan(binaryRecord.sourceSpan, expectedValueSpan) ||
+            !sameSpan(paramRecord.sourceSpan, ZC_ASSERT_NONNULL(operandSpan)) ||
+            !sameSpan(literalRecord.sourceSpan, expectedValueSpan) ||
+            returnRecord.resultType != function.resultType ||
+            returnRecord.value != binaryRecord.node || binaryRecord.left != expectedLeftId ||
+            binaryRecord.right != expectedRightId ||
+            binaryRecord.operandType != function.resultType ||
+            binaryRecord.type != function.resultType ||
+            binaryRecord.category != HirValueCategory::Value || !binaryRecord.isUnaryDesugar ||
+            binaryRecord.operation != expectedBinaryOperation ||
+            paramRecord.type != function.resultType ||
+            paramRecord.category != HirValueCategory::Place ||
+            paramRecord.parameter != expectedDeclaredKey ||
+            literalRecord.type != function.resultType ||
+            literalRecord.category != HirValueCategory::Value ||
+            unaryCallFact.node != closureValue || unaryInvocation.arguments.size() != 1 ||
+            unaryInvocation.arguments[0].sourceNode != parameterUnaryIdentifierNode ||
+            unaryInvocation.arguments[0].sourceType != function.resultType ||
+            unaryInvocation.receiver != zc::none || unaryInvocation.substitutions != zc::none ||
+            unaryInvocation.witnesses != zc::none || unaryInvocation.raises != zc::none ||
+            unaryInvocation.successType != function.resultType ||
+            unaryInvocation.resultType != function.resultType ||
+            !isScalarUnaryOperation(unaryOperation) ||
             !typeExists(function.resultType, semanticTypes)) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                               ir::IrFailureKind::InvalidFact, module, registries,

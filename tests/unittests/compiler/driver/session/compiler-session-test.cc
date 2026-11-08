@@ -1621,6 +1621,83 @@ ZC_TEST("CompilerSessionTest.OneParameterLiteralArithmeticClosureLowersToHirAndM
   ZC_EXPECT(session->getOwnershipCheckedMirModules()[0].builtMir().functions().size() == 2);
 }
 
+ZC_TEST("CompilerSessionTest.OneParameterUnaryClosureLowersToHirAndMir") {
+  // RFC 0057 slice 2: a non-capturing one-parameter closure whose body is one
+  // unary operation over its declared parameter (`(n) -> i32 => -n`), reached
+  // through a whole-local copy chain (`let g = f; g(5)`). The unary spelling
+  // desugars to a flat parameter-plus-synthetic-constant binary (0 - n), so the
+  // closure function still carries one published parameter and one primitive
+  // binary with one parameter-reference arm and one constant arm. HIR and MIR
+  // publish with zero diagnostics and zero incidents.
+  auto session = packageSession(
+      "fn entry() -> i32 { let f = (n: i32) -> i32 => -n; "
+      "let g = f; return g(5); }\n"_zc);
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(session->checkSources());
+  ZC_EXPECT(!session->hasDiagnosticErrors());
+  ZC_EXPECT(session->getIncidents().empty());
+  ZC_REQUIRE(session->getVerifiedHirModules().size() == 1);
+  const auto& hir = session->getVerifiedHirModules()[0];
+  ZC_EXPECT(hir.functions().size() == 2);
+  ZC_EXPECT(hir.closureAddresses().size() == 1);
+  ZC_EXPECT(hir.indirectCalls().size() == 1);
+  ZC_EXPECT(hir.primitiveBinaryOperations().size() == 1);
+  const auto& indirectCall = hir.indirectCalls()[0];
+  ZC_EXPECT(indirectCall.arguments.size() == 1);
+  ZC_EXPECT(indirectCall.arguments[0].value != zc::none);
+  ZC_EXPECT(indirectCall.callee == hir.closureAddresses()[0].closure);
+  size_t closureParameterTotal = 0;
+  for (const auto& function : hir.functions()) {
+    closureParameterTotal += function.parameters.size();
+  }
+  ZC_EXPECT(closureParameterTotal == 1);
+  ZC_REQUIRE(session->getOwnershipCheckedMirModules().size() == 1);
+  ZC_EXPECT(session->getOwnershipCheckedMirModules()[0].builtMir().functions().size() == 2);
+}
+
+ZC_TEST("CompilerSessionTest.OneParameterBitNotUnaryClosureLowersToHirAndMir") {
+  // RFC 0057 slice 2: a non-capturing one-parameter closure whose body is one
+  // bitwise-not unary over its declared parameter (`(n) -> i32 => ~n`), reached
+  // through a whole-local copy chain. The unary desugars to n ^ -1, exercising
+  // the BitXor arithmetic operator distinct from the Add/Sub of the other
+  // integer unary spellings. HIR and MIR publish with zero diagnostics.
+  auto session = packageSession(
+      "fn entry() -> i32 { let f = (n: i32) -> i32 => ~n; "
+      "let g = f; return g(0); }\n"_zc);
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(session->checkSources());
+  ZC_EXPECT(!session->hasDiagnosticErrors());
+  ZC_EXPECT(session->getIncidents().empty());
+  ZC_REQUIRE(session->getVerifiedHirModules().size() == 1);
+  const auto& hir = session->getVerifiedHirModules()[0];
+  ZC_EXPECT(hir.functions().size() == 2);
+  ZC_EXPECT(hir.primitiveBinaryOperations().size() == 1);
+  ZC_EXPECT(hir.primitiveBinaryOperations()[0].isUnaryDesugar);
+  ZC_REQUIRE(session->getOwnershipCheckedMirModules().size() == 1);
+  ZC_EXPECT(session->getOwnershipCheckedMirModules()[0].builtMir().functions().size() == 2);
+}
+
+ZC_TEST("CompilerSessionTest.OneParameterLogicalNotClosureKeepsCapabilityDrain") {
+  // RFC 0057 slice 2 boundary: logical-not is the sole boolean unary operator
+  // and bool-typed closures stay on the separate bool carrier wall, so
+  // `(b) -> bool => !b` keeps the ZOM4099 capability drain with no HIR module
+  // and zero incidents rather than entering the integer unary slice.
+  auto session = packageSession(
+      "fn entry() -> bool { let f = (b: bool) -> bool => !b; "
+      "let g = f; return g(true); }\n"_zc);
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(!session->checkSources());
+  ZC_EXPECT(diagnosticCount(*session, diagnostics::DiagID::FunctionBodySemanticsUnavailable) == 1);
+  ZC_EXPECT(session->getVerifiedHirModules().size() == 0);
+  ZC_EXPECT(session->getIncidents().empty());
+}
+
 ZC_TEST("CompilerSessionTest.ReferenceParameterClosureKeepsCheckerCapabilityDrain") {
   // RFC 0057 slice 1b boundary: a reference-typed closure parameter needs the
   // reference-call ABI of a later slice. The closure publishes no signature,
