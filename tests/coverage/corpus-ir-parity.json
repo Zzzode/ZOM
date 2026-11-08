@@ -1,6 +1,6 @@
 {
   "corpusRoot": "tests/conformance/corpus",
-  "count": 1103,
+  "count": 1127,
   "irChannel": true,
   "outputs": {
     "02-lexical/bigint_suffix_neg_01.zom": {
@@ -2731,6 +2731,10 @@
       "exitCode": 1,
       "sha256": "9b8e911c17931fe3f542f830400098c3ea4b8c42701ba9d7e3140e8314fd026c"
     },
+    "06-declarations/functions/closure-function-definitions/captured_literal_arithmetic_expression_body_pos_01.zom": {
+      "exitCode": 1,
+      "sha256": "8fd2aff9c75c5da98222bc22442751ecafbd449c77ad68a1f67740920948c914"
+    },
     "06-declarations/functions/closure-function-definitions/captures.zom": {
       "exitCode": 1,
       "sha256": "c34d8cdcb37b3a671950614831245d05e51bf64dca3d5a2cd1b4dd6d03c179ae"
@@ -2743,17 +2747,121 @@
       "exitCode": 1,
       "sha256": "77bc8121af4f573e72399494c0b950ea1f22c9df886804e5435b6ecb511507e6"
     },
+    "06-declarations/functions/closure-function-definitions/closure_capture_nested_binary_neg_01.zom": {
+      "exitCode": 1,
+      "sha256": "b22772a22302664749b94223410605f23edb8d8ad46e906d1010f51c2986131d"
+    },
+    "06-declarations/functions/closure-function-definitions/closure_capture_plus_literal_pos_01.zom": {
+      "exitCode": 1,
+      "sha256": "1bf1e19a5839189eebaf31369860f51d0120025d974f51807d43885dbf661c27"
+    },
+    "06-declarations/functions/closure-function-definitions/closure_capture_plus_literal_reversed_pos_01.zom": {
+      "exitCode": 1,
+      "sha256": "3f9a9bae01427bdc9fd807f09764c7460aac8e3747bb00bd3c9e5a3e1b4b3382"
+    },
+    "06-declarations/functions/closure-function-definitions/closure_captured_expression_body_lambda_pos_01.zom": {
+      "exitCode": 1,
+      "sha256": "dd2ea9684fe02b788ac85886b62eeb3f4771361d1604a6cd6d34230d86b461cb"
+    },
+    "06-declarations/functions/closure-function-definitions/closure_mixed_param_capture_pos_01.zom": {
+      "exitCode": 1,
+      "sha256": "dc31d050f7e4803b5e5afa485bd0942901f8f1a0380daf24b3914b44cb0db89e"
+    },
+    "06-declarations/functions/closure-function-definitions/closure_one_parameter_same_operand_body_neg_01.zom": {
+      "exitCode": 1,
+      "sha256": "2fb121b6a01f98ee0b1c911e8a6faa1e6b6f8ce07eb3b8cd1dcc417baa4206fe"
+    },
     "06-declarations/functions/closure-function-definitions/closure_parameter_capability_neg_01.zom": {
       "exitCode": 1,
-      "sha256": "d6d7d2e8ec7207d05aa50e0edab353b3304aad9ee85a05520338a809a3b2229f"
+      "sha256": "32a6557d6d8a8f82fe5f44f24ff348d2f3510ab371fd9b15792c83056902edb5"
+    },
+    "06-declarations/functions/closure-function-definitions/closure_parameter_plus_literal_body_pos_01.zom": {
+      "exitCode": 0,
+      "hirSha256": "f8c441429c56c92344ab906f6aa194ebcc25e0a712a26a2d78174e80fa5f18e1",
+      "mirSha256": "ea6eb931d69086979885ff9bb9a7cdb2cfd5a65e65f18d1f802150448ac60f67",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    "06-declarations/functions/closure-function-definitions/closure_three_parameter_arithmetic_expression_body_neg_01.zom": {
+      "exitCode": 1,
+      "sha256": "92045c668a1f90210b2331b3ccb5935899f45de27d586478892991014a78849c"
+    },
+    "06-declarations/functions/closure-function-definitions/closure_three_scalar_capture_neg_01.zom": {
+      "exitCode": 1,
+      "sha256": "4003fb880b81badac8fa5cd15923a5deb1fb4d1ee4e2effb1c49e05ea644172a"
+    },
+    "06-declarations/functions/closure-function-definitions/closure_two_literal_arithmetic_expression_body_neg_01.zom": {
+      "exitCode": 1,
+      "sha256": "3cfcc665c15cde22eadc397e1d2e6a59ee41db4bd1c5b728c3c2e6668e2b9f01"
+    },
+    "06-declarations/functions/closure-function-definitions/closure_two_literal_closure_body_neg_01.zom": {
+      "exitCode": 1,
+      "sha256": "1e532b07d7f97017eb6c23fd4eab639fd82179923baa8aa8d28962488c0fec40"
+    },
+    "06-declarations/functions/closure-function-definitions/closure_two_parameter_capture_arithmetic_expression_body_neg_01.zom": {
+      "exitCode": 1,
+      "sha256": "31415a8d3d7508ea3eae7917a7b9ac1bdc1bd1adad32307d0d3c6b95203d9dd7"
+    },
+    "06-declarations/functions/closure-function-definitions/closure_two_parameter_same_operand_arithmetic_neg_01.zom": {
+      "exitCode": 1,
+      "sha256": "52faf3efb775a9b842b275b621b2e225da1274a0c4791f4d9dbde4cb4410b763"
+    },
+    "06-declarations/functions/closure-function-definitions/closure_two_parameter_same_operand_comparison_neg_01.zom": {
+      "exitCode": 1,
+      "sha256": "8961f4021f3b1ed22b24ebb4318c8f5feeaf6d2f1ff56c7c4dfeab6c776f1459"
+    },
+    "06-declarations/functions/closure-function-definitions/closure_two_scalar_capture_pos_01.zom": {
+      "exitCode": 1,
+      "sha256": "df112dbf8c54c2a4d1172aaee4e27ec7c6ec3b15376ec77942db6cf34e2df0d8"
     },
     "06-declarations/functions/closure-function-definitions/generic.zom": {
       "exitCode": 1,
       "sha256": "2cd66505e731883c177312c29a3af24185da3ddac8b19d4ddce857b2b95e1333"
     },
+    "06-declarations/functions/closure-function-definitions/mixed_captured_parameter_arithmetic_expression_body_pos_01.zom": {
+      "exitCode": 1,
+      "sha256": "0212b02a7e5e9619f4dfb499bbdbbdc5deac9bf2ffcc1e03176b2c0f0ef02022"
+    },
+    "06-declarations/functions/closure-function-definitions/one_parameter_literal_arithmetic_expression_body_pos_01.zom": {
+      "exitCode": 0,
+      "hirSha256": "f44871c6b7e94c876fbda35334a374fdb22005a0f34b517e2e60f7b2a240876e",
+      "mirSha256": "f20f50a275b305db3b3b039e80888280619c3f1511cee76a2304fb6e2695031f",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    "06-declarations/functions/closure-function-definitions/one_parameter_repeated_operand_arithmetic_expression_body_neg_01.zom": {
+      "exitCode": 1,
+      "sha256": "ac17b7d3581f61afcdd189897a478e116e925bc5adc5d091b9e001f32cabd7ea"
+    },
     "06-declarations/functions/closure-function-definitions/raises.zom": {
       "exitCode": 1,
       "sha256": "42b9c25ce0bfa14be767cc7251c1f504ac2bbc72bff54ae442df07f3ab492aa0"
+    },
+    "06-declarations/functions/closure-function-definitions/two_captured_arithmetic_expression_body_pos_01.zom": {
+      "exitCode": 1,
+      "sha256": "7b5d6010b2f2ed4f495f16038ba959e9656d2299cdd6a1659add324869b81997"
+    },
+    "06-declarations/functions/closure-function-definitions/two_parameter_arithmetic_expression_body_pos_01.zom": {
+      "exitCode": 0,
+      "hirSha256": "d4244fe9fcd94268f44afd706b814606f7f13b95e5aceab0dfa668a529736150",
+      "mirSha256": "31230be277ee84e32535eb132c8da9cbcf4494e0b6f41ca9c0a739f7db0206ad",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    "06-declarations/functions/closure-function-definitions/two_parameter_comparison_expression_body_pos_01.zom": {
+      "exitCode": 0,
+      "hirSha256": "3eead706c0a43671de4191f9add190327045408e0e141c198f1db880b9d2a7bd",
+      "mirSha256": "776100804dfd61f1d6bde27ad34ad2e6fbca95d463c7d5ae738add3cc89c28d8",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    "06-declarations/functions/closure-function-definitions/zero_argument_copied_block_closure_value_pos_01.zom": {
+      "exitCode": 0,
+      "hirSha256": "9687846d5e2ccb35bbb3a4054d4db9351d4efbb181bfe98e1fc95ea2d0c7b3c9",
+      "mirSha256": "3e24a4e6abc3eba433c21f3e1f73b960d55a9c1a8eb0702c14640582e753b2ce",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    "06-declarations/functions/closure-function-definitions/zero_argument_copied_closure_value_pos_01.zom": {
+      "exitCode": 0,
+      "hirSha256": "2d504472e78637072eaef400d2f8b20dd0131d4f94445cdbbf20eda24755d095",
+      "mirSha256": "e8634ccde68303a49eab793c61fe5024620b425969a5f9a3c0fefcd13c0e9f40",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     "06-declarations/functions/function-definitions/default-params.zom": {
       "exitCode": 1,
