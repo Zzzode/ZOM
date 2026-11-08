@@ -340,10 +340,8 @@ BODY_CHECKER_SOURCE = os.path.join(
 CHECKER_UNSUPPORTED_EXPRESSIONS = frozenset({
     "CommaExpr",
     "ErrorDefaultExpr",
-    "FunctionExpression",
     "ImportCallExpression",
     "IsExpression",
-    "LambdaExpression",
     "NewExpression",
     "NullCoalesceExpr",
     "ObjectLiteralExpr",
