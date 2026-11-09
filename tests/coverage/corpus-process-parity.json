@@ -1,6 +1,6 @@
 {
   "corpusRoot": "tests/conformance/corpus",
-  "count": 1132,
+  "count": 1134,
   "irChannel": false,
   "outputs": {
     "02-lexical/bigint_suffix_neg_01.zom": {
@@ -2671,6 +2671,10 @@
       "exitCode": 1,
       "sha256": "42b9c25ce0bfa14be767cc7251c1f504ac2bbc72bff54ae442df07f3ab492aa0"
     },
+    "06-declarations/functions/closure-function-definitions/three_statement_sequential_block_closure_neg_01.zom": {
+      "exitCode": 1,
+      "sha256": "d0c14ee477cf16535dae9a14d2454ea3523f7ab638481f3735ca3ebb341c303e"
+    },
     "06-declarations/functions/closure-function-definitions/two_captured_arithmetic_expression_body_pos_01.zom": {
       "exitCode": 1,
       "sha256": "7b5d6010b2f2ed4f495f16038ba959e9656d2299cdd6a1659add324869b81997"
@@ -2684,6 +2688,10 @@
       "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     "06-declarations/functions/closure-function-definitions/two_parameter_nested_binary_expression_body_pos_01.zom": {
+      "exitCode": 0,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    "06-declarations/functions/closure-function-definitions/two_parameter_sequential_local_block_closure_pos_01.zom": {
       "exitCode": 0,
       "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
