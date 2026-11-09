@@ -1396,6 +1396,22 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       ast::NodeId parameterNestedInnerNode;
       ast::NodeId parameterNestedOuterNode;
       ast::NodeId parameterNestedOuterOtherNode;
+      // RFC 0057 slice 2 sequential-local block form: a two-parameter
+      // block-body closure with one leading PrimitiveBinary binding over both
+      // parameters and a trailing local-plus-literal return binary. The probe
+      // recognizes the two-statement source layout; the dedicated tree branch
+      // below validates the emitted ten-node HIR independently of the fixed
+      // four/six-stride closure collection.
+      bool parameterSequentialClosure = false;
+      ast::NodeId sequentialSourceBody;
+      ast::NodeId sequentialSourceReturn;
+      ast::NodeId sequentialSourceReturnValue;
+      ast::NodeId sequentialSourceBindingInit;
+      ast::NodeId sequentialSourceBindingLeft;
+      ast::NodeId sequentialSourceBindingRight;
+      ast::NodeId sequentialSourceReturnLocal;
+      ast::NodeId sequentialSourceReturnLiteral;
+      bool sequentialSourceLiteralOnLeft = false;
       if (parameterClosure && closureParameterCount == 2) {
         ast::NodeId parameterNestedValue;
         if (closureIsFunctionExpression) {
@@ -1442,6 +1458,83 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               parameterNestedInnerNode = innerNode;
               parameterNestedOuterNode = parameterNestedValue;
               parameterNestedOuterOtherNode = outerOther;
+            }
+          }
+        }
+      }
+      // Probe the sequential-local block form independently of the single-value
+      // closure shapes. It only matches a block-body function-expression with
+      // exactly two statements: one let binding whose binary initializer names
+      // the two declared parameters and one return binary over that binding and
+      // an integer literal.
+      if (parameterClosure && closureParameterCount == 2 && closureIsFunctionExpression) {
+        auto sequentialBodyShape =
+            functionReturnShape(closureTree, closureTree.node(closureDefinition.node));
+        if (sequentialBodyShape != zc::none) {
+          const FunctionReturnShape& sourceShape = ZC_ASSERT_NONNULL(sequentialBodyShape);
+          const auto& sourceBlock = closureTree.node(sourceShape.body);
+          const ast::NodeList sourceStatements{
+              sourceBlock.payload.words[ast::kBlockStmtStmtsFirstWord],
+              sourceBlock.payload.words[ast::kBlockStmtStmtsSizeWord]};
+          if (closureTree.contains(sourceStatements) && sourceStatements.size == 2) {
+            const auto firstItem =
+                statementItem(closureTree, closureTree.list(sourceStatements)[0]);
+            const auto secondItem =
+                statementItem(closureTree, closureTree.list(sourceStatements)[1]);
+            if (firstItem != zc::none && secondItem != zc::none &&
+                ZC_ASSERT_NONNULL(secondItem) == sourceShape.returnStatement) {
+              const auto declaratorMaybe =
+                  localDeclarator(closureTree, closureTree.list(sourceStatements)[0]);
+              if (declaratorMaybe != zc::none) {
+                const ast::NodeId declarator = ZC_ASSERT_NONNULL(declaratorMaybe);
+                const ast::NodeId pattern(closureTree.node(declarator)
+                                              .payload.words[ast::kVariableDeclaratorPatternWord]);
+                const ast::NodeId initializer(
+                    closureTree.node(declarator).payload.words[ast::kVariableDeclaratorInitWord]);
+                if (closureTree.contains(initializer) &&
+                    closureTree.node(initializer).kind == ast::SyntaxKind::BinaryExpr) {
+                  const ast::NodeId bindLeft(
+                      closureTree.node(initializer).payload.words[ast::kBinaryExprLhsWord]);
+                  const ast::NodeId bindRight(
+                      closureTree.node(initializer).payload.words[ast::kBinaryExprRhsWord]);
+                  const ast::NodeId returnValue = sourceShape.value;
+                  if (closureTree.contains(bindLeft) && closureTree.contains(bindRight) &&
+                      closureTree.node(bindLeft).kind == ast::SyntaxKind::IdentExpr &&
+                      closureTree.node(bindRight).kind == ast::SyntaxKind::IdentExpr &&
+                      closureTree.node(returnValue).kind == ast::SyntaxKind::BinaryExpr) {
+                    const ast::NodeId retLeft(
+                        closureTree.node(returnValue).payload.words[ast::kBinaryExprLhsWord]);
+                    const ast::NodeId retRight(
+                        closureTree.node(returnValue).payload.words[ast::kBinaryExprRhsWord]);
+                    const bool leftIsLocal =
+                        closureTree.contains(retLeft) &&
+                        closureTree.node(retLeft).kind == ast::SyntaxKind::IdentExpr &&
+                        matchesLocalReference(closureTree, pattern, retLeft);
+                    const bool rightIsLocal =
+                        closureTree.contains(retRight) &&
+                        closureTree.node(retRight).kind == ast::SyntaxKind::IdentExpr &&
+                        matchesLocalReference(closureTree, pattern, retRight);
+                    const bool leftIsLiteral =
+                        closureTree.contains(retLeft) &&
+                        closureTree.node(retLeft).kind == ast::SyntaxKind::IntLiteral;
+                    const bool rightIsLiteral =
+                        closureTree.contains(retRight) &&
+                        closureTree.node(retRight).kind == ast::SyntaxKind::IntLiteral;
+                    if ((leftIsLocal && rightIsLiteral) || (rightIsLocal && leftIsLiteral)) {
+                      parameterSequentialClosure = true;
+                      sequentialSourceBody = sourceShape.body;
+                      sequentialSourceReturn = sourceShape.returnStatement;
+                      sequentialSourceReturnValue = returnValue;
+                      sequentialSourceBindingInit = initializer;
+                      sequentialSourceBindingLeft = bindLeft;
+                      sequentialSourceBindingRight = bindRight;
+                      sequentialSourceLiteralOnLeft = leftIsLiteral;
+                      sequentialSourceReturnLocal = leftIsLocal ? retLeft : retRight;
+                      sequentialSourceReturnLiteral = leftIsLiteral ? retLeft : retRight;
+                    }
+                  }
+                }
+              }
             }
           }
         }
@@ -1524,6 +1617,171 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       if (mixedParameterCapture || captureLiteralArithmetic || parameterArithmeticClosure ||
           parameterLiteralArithmeticClosure || parameterUnaryClosure) {
         binaryClosure = true;
+      }
+      if (parameterSequentialClosure) {
+        // Sequential-local block closure: a ten source-preorder node stride —
+        // function F, body F+1, local binding F+2, binding binary F+3, its two
+        // parameter references F+4/F+5, return F+6, return binary F+7, then the
+        // return local reference F+8 and the return literal F+9. Validate it as
+        // a self-contained tree by node id and skip the fixed-stride closure
+        // collection below.
+        const size_t sequentialStride = 10;
+        const HirNodeId bindingLocalId = hirId(expectedFunction + 2);
+        const HirNodeId bindingBinaryId = hirId(expectedFunction + 3);
+        const HirNodeId bindingLeftId = hirId(expectedFunction + 4);
+        const HirNodeId bindingRightId = hirId(expectedFunction + 5);
+        const HirNodeId sequentialReturnId = hirId(expectedFunction + 6);
+        const HirNodeId returnBinaryId = hirId(expectedFunction + 7);
+        const HirNodeId returnLeftId = hirId(expectedFunction + 8);
+        const HirNodeId returnRightId = hirId(expectedFunction + 9);
+        const HirNodeId returnLocalHirId =
+            sequentialSourceLiteralOnLeft ? returnRightId : returnLeftId;
+        const HirNodeId returnLiteralHirId =
+            sequentialSourceLiteralOnLeft ? returnLeftId : returnRightId;
+        auto findBinary = [&](HirNodeId node) -> zc::Maybe<const HirPrimitiveBinaryExpression&> {
+          for (const auto& candidateBinary : candidate.impl->primitiveBinaryOperations) {
+            if (candidateBinary.node == node) { return candidateBinary; }
+          }
+          return zc::none;
+        };
+        auto findParameterRef =
+            [&](HirNodeId node) -> zc::Maybe<const HirParameterReferenceExpression&> {
+          for (const auto& candidateReference : candidate.impl->parameterReferences) {
+            if (candidateReference.node == node) { return candidateReference; }
+          }
+          return zc::none;
+        };
+        auto findLocalRef = [&](HirNodeId node) -> zc::Maybe<const HirLocalReferenceExpression&> {
+          for (const auto& candidateReference : candidate.impl->localReferences) {
+            if (candidateReference.node == node) { return candidateReference; }
+          }
+          return zc::none;
+        };
+        auto findLocal = [&](HirNodeId node) -> zc::Maybe<const HirLocalBinding&> {
+          for (const auto& candidateLocal : candidate.impl->locals) {
+            if (candidateLocal.node == node) { return candidateLocal; }
+          }
+          return zc::none;
+        };
+        auto findLiteral = [&](HirNodeId node) -> zc::Maybe<const HirScalarLiteralExpression&> {
+          for (const auto& candidateExpression : candidate.impl->expressions) {
+            if (candidateExpression.node == node) { return candidateExpression; }
+          }
+          return zc::none;
+        };
+        auto findReturn = [&](HirNodeId node) -> zc::Maybe<const HirReturnStatement&> {
+          for (const auto& candidateReturn : candidate.impl->returns) {
+            if (candidateReturn.node == node) { return candidateReturn; }
+          }
+          return zc::none;
+        };
+        const auto bindingLocal = findLocal(bindingLocalId);
+        const auto bindingBinary = findBinary(bindingBinaryId);
+        const auto bindingLeftRef = findParameterRef(bindingLeftId);
+        const auto bindingRightRef = findParameterRef(bindingRightId);
+        const auto sequentialReturn = findReturn(sequentialReturnId);
+        const auto returnBinary = findBinary(returnBinaryId);
+        const auto returnLocalRef = findLocalRef(returnLocalHirId);
+        const auto returnLiteral = findLiteral(returnLiteralHirId);
+        if (bindingLocal == zc::none || bindingBinary == zc::none || bindingLeftRef == zc::none ||
+            bindingRightRef == zc::none || sequentialReturn == zc::none ||
+            returnBinary == zc::none || returnLocalRef == zc::none || returnLiteral == zc::none ||
+            function.node != hirId(expectedFunction) || block.node != hirId(expectedFunction + 1) ||
+            function.body != block.node || block.statements.size() != 2 ||
+            block.statements[0] != bindingLocalId || block.statements[1] != sequentialReturnId ||
+            function.receiver != zc::none || function.parameters.size() != 2) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        // Reconcile the binding and return primitive call facts and the literal.
+        auto bindingCallIndex = factIndex(facts.calls(), sequentialSourceBindingInit);
+        auto returnCallIndex = factIndex(facts.calls(), sequentialSourceReturnValue);
+        auto literalIndex = factIndex(facts.literals(), sequentialSourceReturnLiteral);
+        if (bindingCallIndex == zc::none || returnCallIndex == zc::none ||
+            literalIndex == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        size_t bindingCallSlot = 0;
+        size_t returnCallSlot = 0;
+        size_t literalSlot = 0;
+        ZC_IF_SOME(value, bindingCallIndex) { bindingCallSlot = value; }
+        ZC_IF_SOME(value, returnCallIndex) { returnCallSlot = value; }
+        ZC_IF_SOME(value, literalIndex) { literalSlot = value; }
+        const auto& bindingInvocation = facts.calls().entries()[bindingCallSlot].value.invocation;
+        const auto& returnInvocation = facts.calls().entries()[returnCallSlot].value.invocation;
+        const auto& literalFact = facts.literals().entries()[literalSlot].value;
+        const auto bindingSelected = bindingInvocation.selected.variant();
+        const auto returnSelected = returnInvocation.selected.variant();
+        const identity::CallableParameterKey expectedLeftKey =
+            earlyCallable.parameters[0].parameter.clone();
+        const identity::CallableParameterKey expectedRightKey =
+            earlyCallable.parameters[1].parameter.clone();
+        const bool treeValid =
+            bindingSelected.is<checker::checked::PrimitiveCallable>() &&
+            returnSelected.is<checker::checked::PrimitiveCallable>() &&
+            isScalarArithmeticOperation(
+                bindingSelected.get<checker::checked::PrimitiveCallable>().operation) &&
+            isScalarArithmeticOperation(
+                returnSelected.get<checker::checked::PrimitiveCallable>().operation) &&
+            bindingInvocation.arguments.size() == 2 && returnInvocation.arguments.size() == 2 &&
+            bindingInvocation.arguments[0].sourceNode == sequentialSourceBindingLeft &&
+            bindingInvocation.arguments[1].sourceNode == sequentialSourceBindingRight &&
+            returnInvocation.arguments[0].sourceNode == (sequentialSourceLiteralOnLeft
+                                                             ? sequentialSourceReturnLiteral
+                                                             : sequentialSourceReturnLocal) &&
+            returnInvocation.arguments[1].sourceNode == (sequentialSourceLiteralOnLeft
+                                                             ? sequentialSourceReturnLocal
+                                                             : sequentialSourceReturnLiteral) &&
+            bindingInvocation.receiver == zc::none && returnInvocation.receiver == zc::none &&
+            bindingInvocation.substitutions == zc::none &&
+            returnInvocation.substitutions == zc::none && bindingInvocation.witnesses == zc::none &&
+            returnInvocation.witnesses == zc::none && bindingInvocation.raises == zc::none &&
+            returnInvocation.raises == zc::none &&
+            bindingInvocation.successType == function.resultType &&
+            returnInvocation.successType == function.resultType &&
+            literalFact.node == sequentialSourceReturnLiteral &&
+            literalFact.type == function.resultType &&
+            ZC_ASSERT_NONNULL(bindingLocal).local == hirLocalId(1) &&
+            ZC_ASSERT_NONNULL(bindingLocal).type == function.resultType &&
+            ZC_ASSERT_NONNULL(bindingLocal).initializer == bindingBinaryId &&
+            ZC_ASSERT_NONNULL(bindingBinary).left == bindingLeftId &&
+            ZC_ASSERT_NONNULL(bindingBinary).right == bindingRightId &&
+            ZC_ASSERT_NONNULL(bindingBinary).operation ==
+                bindingSelected.get<checker::checked::PrimitiveCallable>().operation &&
+            ZC_ASSERT_NONNULL(bindingBinary).operandType == function.resultType &&
+            ZC_ASSERT_NONNULL(bindingBinary).type == function.resultType &&
+            ZC_ASSERT_NONNULL(returnBinary).left == returnLeftId &&
+            ZC_ASSERT_NONNULL(returnBinary).right == returnRightId &&
+            ZC_ASSERT_NONNULL(returnBinary).operation ==
+                returnSelected.get<checker::checked::PrimitiveCallable>().operation &&
+            ZC_ASSERT_NONNULL(returnBinary).operandType == function.resultType &&
+            ZC_ASSERT_NONNULL(returnBinary).type == function.resultType &&
+            ZC_ASSERT_NONNULL(bindingLeftRef).parameter == expectedLeftKey &&
+            ZC_ASSERT_NONNULL(bindingRightRef).parameter == expectedRightKey &&
+            ZC_ASSERT_NONNULL(bindingLeftRef).type == function.resultType &&
+            ZC_ASSERT_NONNULL(bindingRightRef).type == function.resultType &&
+            ZC_ASSERT_NONNULL(bindingLeftRef).category == HirValueCategory::Place &&
+            ZC_ASSERT_NONNULL(bindingRightRef).category == HirValueCategory::Place &&
+            ZC_ASSERT_NONNULL(returnLocalRef).local == hirLocalId(1) &&
+            ZC_ASSERT_NONNULL(returnLocalRef).type == function.resultType &&
+            ZC_ASSERT_NONNULL(returnLocalRef).category == HirValueCategory::Place &&
+            ZC_ASSERT_NONNULL(returnLiteral).type == function.resultType &&
+            ZC_ASSERT_NONNULL(returnLiteral).category == HirValueCategory::Value &&
+            sameConstant(ZC_ASSERT_NONNULL(returnLiteral).value, literalFact.literal, module,
+                         registries, semanticTypes) &&
+            ZC_ASSERT_NONNULL(sequentialReturn).resultType == function.resultType &&
+            ZC_ASSERT_NONNULL(sequentialReturn).value == returnBinaryId &&
+            typeExists(function.resultType, semanticTypes);
+        if (!treeValid) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        nextFunction += sequentialStride;
+        continue;
       }
       if (parameterNestedClosure) {
         // One-level nested closure: an eight source-preorder node stride —

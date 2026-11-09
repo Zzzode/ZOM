@@ -13982,6 +13982,25 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       ast::NodeId parameterNestedInnerNode;
       size_t parameterNestedLeftIndex = 0;
       size_t parameterNestedRightIndex = 0;
+      // RFC 0057 slice 2 sequential-local block form: a two-parameter
+      // block-body function-expression closure with exactly one leading let
+      // binding whose initializer is a primitive binary over both declared
+      // parameters and a trailing return binary over that local and an integer
+      // literal (`fn(a, b) { let t = a + b; return t + 1; }`). It emits the
+      // shared SequentialLocalReturn shape; the block spelling and the narrow
+      // two-statement layout are the only admitted form in this slice.
+      bool parameterSequentialClosure = false;
+      ast::NodeId sequentialBodyNode;
+      ast::NodeId sequentialReturnNode;
+      ast::NodeId sequentialReturnValueNode;
+      ast::NodeId sequentialBindingDeclaratorNode;
+      ast::NodeId sequentialBindingPatternNode;
+      ast::NodeId sequentialBindingInitNode;
+      ast::NodeId sequentialBindingLeftNode;
+      ast::NodeId sequentialBindingRightNode;
+      ast::NodeId sequentialReturnLocalNode;
+      ast::NodeId sequentialReturnLiteralNode;
+      bool sequentialReturnLiteralOnLeft = false;
       // Source anchors and spans. The lambda spelling has no source block or
       // return: hirBodyAnchor/hirReturnAnchor stay sentinel and their spans
       // reuse the closure source span, while the value anchors the body
@@ -14302,25 +14321,104 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           const ast::NodeList closureStatements{
               closureBlock.payload.words[ast::kBlockStmtStmtsFirstWord],
               closureBlock.payload.words[ast::kBlockStmtStmtsSizeWord]};
-          const ast::NodeId declaredReturnValue(closureTree.node(closureShape.returnStatement)
-                                                    .payload.words[ast::kReturnStmtValueWord]);
-          if (!closureTree.contains(closureStatements) || closureStatements.size != 1 ||
-              !closureTree.contains(closureShape.returnStatement) ||
-              !closureTree.contains(closureShape.value) ||
-              closureTree.node(closureShape.returnStatement).kind != ast::SyntaxKind::ReturnStmt ||
-              declaredReturnValue != closureShape.value ||
-              (closureTree.node(closureShape.value).kind != ast::SyntaxKind::IdentExpr &&
-               closureTree.node(closureShape.value).kind != ast::SyntaxKind::BinaryExpr &&
-               closureTree.node(closureShape.value).kind != ast::SyntaxKind::UnaryExpression)) {
-            return rejectClosureCapability();
+          // Two-statement sequential-local nested form: one leading let binding
+          // whose initializer is a binary over the two declared parameters and a
+          // trailing return binary over that local and an integer literal. Probe
+          // it before the single-return gate so the multi-statement layout is
+          // not rejected outright. Any structural mismatch leaves the flag clear
+          // and falls through to the single-return validation, which drains the
+          // unsupported layout as the capability code.
+          if (closureParameterCount == 2 && closureTree.contains(closureStatements) &&
+              closureStatements.size == 2) {
+            const auto firstItem =
+                statementItem(closureTree, closureTree.list(closureStatements)[0]);
+            const auto secondItem =
+                statementItem(closureTree, closureTree.list(closureStatements)[1]);
+            if (firstItem != zc::none && secondItem != zc::none &&
+                ZC_ASSERT_NONNULL(secondItem) == closureShape.returnStatement) {
+              const auto declaratorMaybe =
+                  localDeclarator(closureTree, closureTree.list(closureStatements)[0]);
+              if (declaratorMaybe != zc::none) {
+                const ast::NodeId declarator = ZC_ASSERT_NONNULL(declaratorMaybe);
+                const ast::NodeId pattern(closureTree.node(declarator)
+                                              .payload.words[ast::kVariableDeclaratorPatternWord]);
+                const ast::NodeId initializer(
+                    closureTree.node(declarator).payload.words[ast::kVariableDeclaratorInitWord]);
+                if (closureTree.contains(initializer) &&
+                    closureTree.node(initializer).kind == ast::SyntaxKind::BinaryExpr) {
+                  const ast::NodeId bindLeft(
+                      closureTree.node(initializer).payload.words[ast::kBinaryExprLhsWord]);
+                  const ast::NodeId bindRight(
+                      closureTree.node(initializer).payload.words[ast::kBinaryExprRhsWord]);
+                  const ast::NodeId returnValue = closureShape.value;
+                  if (closureTree.contains(bindLeft) && closureTree.contains(bindRight) &&
+                      closureTree.node(bindLeft).kind == ast::SyntaxKind::IdentExpr &&
+                      closureTree.node(bindRight).kind == ast::SyntaxKind::IdentExpr &&
+                      closureTree.node(returnValue).kind == ast::SyntaxKind::BinaryExpr) {
+                    const ast::NodeId retLeft(
+                        closureTree.node(returnValue).payload.words[ast::kBinaryExprLhsWord]);
+                    const ast::NodeId retRight(
+                        closureTree.node(returnValue).payload.words[ast::kBinaryExprRhsWord]);
+                    const bool leftIsLocal =
+                        closureTree.contains(retLeft) &&
+                        closureTree.node(retLeft).kind == ast::SyntaxKind::IdentExpr &&
+                        matchesLocalReference(closureTree, pattern, retLeft);
+                    const bool rightIsLocal =
+                        closureTree.contains(retRight) &&
+                        closureTree.node(retRight).kind == ast::SyntaxKind::IdentExpr &&
+                        matchesLocalReference(closureTree, pattern, retRight);
+                    const bool leftIsLiteral =
+                        closureTree.contains(retLeft) &&
+                        closureTree.node(retLeft).kind == ast::SyntaxKind::IntLiteral;
+                    const bool rightIsLiteral =
+                        closureTree.contains(retRight) &&
+                        closureTree.node(retRight).kind == ast::SyntaxKind::IntLiteral;
+                    if ((leftIsLocal && rightIsLiteral) || (rightIsLocal && leftIsLiteral)) {
+                      parameterSequentialClosure = true;
+                      sequentialBodyNode = closureShape.body;
+                      sequentialReturnNode = closureShape.returnStatement;
+                      sequentialReturnValueNode = returnValue;
+                      sequentialBindingDeclaratorNode = declarator;
+                      sequentialBindingPatternNode = pattern;
+                      sequentialBindingInitNode = initializer;
+                      sequentialBindingLeftNode = bindLeft;
+                      sequentialBindingRightNode = bindRight;
+                      sequentialReturnLiteralOnLeft = leftIsLiteral;
+                      sequentialReturnLocalNode = leftIsLocal ? retLeft : retRight;
+                      sequentialReturnLiteralNode = leftIsLiteral ? retLeft : retRight;
+                    }
+                  }
+                }
+              }
+            }
           }
-          auto soleItem = statementItem(closureTree, closureTree.list(closureStatements)[0]);
-          if (soleItem == zc::none || ZC_ASSERT_NONNULL(soleItem) != closureShape.returnStatement) {
-            return rejectClosureCapability();
+          if (parameterSequentialClosure) {
+            parameterClosureValue = sequentialReturnValueNode;
+            parameterClosureBody = sequentialBodyNode;
+            parameterClosureReturn = sequentialReturnNode;
+          } else {
+            const ast::NodeId declaredReturnValue(closureTree.node(closureShape.returnStatement)
+                                                      .payload.words[ast::kReturnStmtValueWord]);
+            if (!closureTree.contains(closureStatements) || closureStatements.size != 1 ||
+                !closureTree.contains(closureShape.returnStatement) ||
+                !closureTree.contains(closureShape.value) ||
+                closureTree.node(closureShape.returnStatement).kind !=
+                    ast::SyntaxKind::ReturnStmt ||
+                declaredReturnValue != closureShape.value ||
+                (closureTree.node(closureShape.value).kind != ast::SyntaxKind::IdentExpr &&
+                 closureTree.node(closureShape.value).kind != ast::SyntaxKind::BinaryExpr &&
+                 closureTree.node(closureShape.value).kind != ast::SyntaxKind::UnaryExpression)) {
+              return rejectClosureCapability();
+            }
+            auto soleItem = statementItem(closureTree, closureTree.list(closureStatements)[0]);
+            if (soleItem == zc::none ||
+                ZC_ASSERT_NONNULL(soleItem) != closureShape.returnStatement) {
+              return rejectClosureCapability();
+            }
+            parameterClosureValue = closureShape.value;
+            parameterClosureBody = closureShape.body;
+            parameterClosureReturn = closureShape.returnStatement;
           }
-          parameterClosureValue = closureShape.value;
-          parameterClosureBody = closureShape.body;
-          parameterClosureReturn = closureShape.returnStatement;
         } else {
           const ast::NodeId lambdaBlock(
               closureTree.node(closure.node).payload.words[ast::kLambdaExpressionBodyWord]);
@@ -14334,168 +14432,171 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           }
           parameterClosureValue = lambdaBody;
         }
-        // Split the body value into one identifier leaf or the operands of an
-        // arithmetic binary. A bare parameter identifier return is admitted
-        // for one or two declared parameters. A binary body is admitted for two
-        // declared parameters (two identifier operands), or for one declared
-        // parameter combined with one integer literal operand. A one-parameter
-        // binary over two references, a repeated operand, and any other operand
-        // shape keep the capability drain. The operation legality is reconciled
-        // with the checker primitive call fact at arm construction, not from
-        // the syntax kind.
-        if (closureTree.node(parameterClosureValue).kind == ast::SyntaxKind::UnaryExpression) {
-          // A primitive unary over the sole declared parameter. The operand
-          // must be the one parameter identifier; the operation and its
-          // desugared binary form are reconciled against the checker unary
-          // call fact at shape construction below.
-          if (closureParameterCount != 1) { return rejectClosureCapability(); }
-          const ast::NodeId unaryOperand(closureTree.node(parameterClosureValue)
-                                             .payload.words[ast::kUnaryExpressionOperandWord]);
-          if (!closureTree.contains(unaryOperand) ||
-              closureTree.node(unaryOperand).kind != ast::SyntaxKind::IdentExpr) {
-            return rejectClosureCapability();
-          }
-          parameterUnaryClosure = true;
-          parameterUnaryNode = parameterClosureValue;
-          parameterUnaryOperandNode = unaryOperand;
-          parameterBodyLeaves.add(unaryOperand);
-        } else if (closureTree.node(parameterClosureValue).kind == ast::SyntaxKind::IdentExpr) {
-          if (closureParameterCount < 1 || closureParameterCount > 2) {
-            return rejectClosureCapability();
-          }
-          parameterBodyLeaves.add(parameterClosureValue);
-        } else {
-          const ast::NodeId binaryLeft(
-              closureTree.node(parameterClosureValue).payload.words[ast::kBinaryExprLhsWord]);
-          const ast::NodeId binaryRight(
-              closureTree.node(parameterClosureValue).payload.words[ast::kBinaryExprRhsWord]);
-          if (!closureTree.contains(binaryLeft) || !closureTree.contains(binaryRight)) {
-            return rejectClosureCapability();
-          }
-          const bool leftIsIdent = closureTree.node(binaryLeft).kind == ast::SyntaxKind::IdentExpr;
-          const bool rightIsIdent =
-              closureTree.node(binaryRight).kind == ast::SyntaxKind::IdentExpr;
-          const bool leftIsLiteral =
-              closureTree.node(binaryLeft).kind == ast::SyntaxKind::IntLiteral;
-          const bool rightIsLiteral =
-              closureTree.node(binaryRight).kind == ast::SyntaxKind::IntLiteral;
-          // One-level nested form: the LEFT outer operand is itself a binary
-          // whose two leaves are identifier parameters, and the right outer
-          // operand is an integer literal. The inner operands must not nest
-          // further (depth exactly one). An inner binary on the right has no
-          // admitted HIR stride or MIR/LIR lowering slice, so it keeps the
-          // capability drain through the fallback below.
-          const bool leftIsInnerBinary =
-              closureTree.node(binaryLeft).kind == ast::SyntaxKind::BinaryExpr;
-          const bool rightIsInnerBinary =
-              closureTree.node(binaryRight).kind == ast::SyntaxKind::BinaryExpr;
-          if (leftIsInnerBinary && !rightIsInnerBinary && closureParameterCount == 2) {
-            const ast::NodeId innerNode = binaryLeft;
-            const ast::NodeId outerOtherNode = binaryRight;
-            const ast::NodeId innerLeft(
-                closureTree.node(innerNode).payload.words[ast::kBinaryExprLhsWord]);
-            const ast::NodeId innerRight(
-                closureTree.node(innerNode).payload.words[ast::kBinaryExprRhsWord]);
-            const bool innerLeavesAreParams =
-                closureTree.contains(innerLeft) && closureTree.contains(innerRight) &&
-                closureTree.node(innerLeft).kind == ast::SyntaxKind::IdentExpr &&
-                closureTree.node(innerRight).kind == ast::SyntaxKind::IdentExpr;
-            const bool outerOtherIsLiteral =
-                closureTree.node(outerOtherNode).kind == ast::SyntaxKind::IntLiteral;
-            if (innerLeavesAreParams && outerOtherIsLiteral) {
-              parameterNestedClosure = true;
-              parameterNestedOuterNode = parameterClosureValue;
-              parameterNestedInnerNode = innerNode;
-              parameterBodyLeaves.add(innerLeft);
-              parameterBodyLeaves.add(innerRight);
+        if (!parameterSequentialClosure) {
+          // Split the body value into one identifier leaf or the operands of an
+          // arithmetic binary. A bare parameter identifier return is admitted
+          // for one or two declared parameters. A binary body is admitted for two
+          // declared parameters (two identifier operands), or for one declared
+          // parameter combined with one integer literal operand. A one-parameter
+          // binary over two references, a repeated operand, and any other operand
+          // shape keep the capability drain. The operation legality is reconciled
+          // with the checker primitive call fact at arm construction, not from
+          // the syntax kind.
+          if (closureTree.node(parameterClosureValue).kind == ast::SyntaxKind::UnaryExpression) {
+            // A primitive unary over the sole declared parameter. The operand
+            // must be the one parameter identifier; the operation and its
+            // desugared binary form are reconciled against the checker unary
+            // call fact at shape construction below.
+            if (closureParameterCount != 1) { return rejectClosureCapability(); }
+            const ast::NodeId unaryOperand(closureTree.node(parameterClosureValue)
+                                               .payload.words[ast::kUnaryExpressionOperandWord]);
+            if (!closureTree.contains(unaryOperand) ||
+                closureTree.node(unaryOperand).kind != ast::SyntaxKind::IdentExpr) {
+              return rejectClosureCapability();
+            }
+            parameterUnaryClosure = true;
+            parameterUnaryNode = parameterClosureValue;
+            parameterUnaryOperandNode = unaryOperand;
+            parameterBodyLeaves.add(unaryOperand);
+          } else if (closureTree.node(parameterClosureValue).kind == ast::SyntaxKind::IdentExpr) {
+            if (closureParameterCount < 1 || closureParameterCount > 2) {
+              return rejectClosureCapability();
+            }
+            parameterBodyLeaves.add(parameterClosureValue);
+          } else {
+            const ast::NodeId binaryLeft(
+                closureTree.node(parameterClosureValue).payload.words[ast::kBinaryExprLhsWord]);
+            const ast::NodeId binaryRight(
+                closureTree.node(parameterClosureValue).payload.words[ast::kBinaryExprRhsWord]);
+            if (!closureTree.contains(binaryLeft) || !closureTree.contains(binaryRight)) {
+              return rejectClosureCapability();
+            }
+            const bool leftIsIdent =
+                closureTree.node(binaryLeft).kind == ast::SyntaxKind::IdentExpr;
+            const bool rightIsIdent =
+                closureTree.node(binaryRight).kind == ast::SyntaxKind::IdentExpr;
+            const bool leftIsLiteral =
+                closureTree.node(binaryLeft).kind == ast::SyntaxKind::IntLiteral;
+            const bool rightIsLiteral =
+                closureTree.node(binaryRight).kind == ast::SyntaxKind::IntLiteral;
+            // One-level nested form: the LEFT outer operand is itself a binary
+            // whose two leaves are identifier parameters, and the right outer
+            // operand is an integer literal. The inner operands must not nest
+            // further (depth exactly one). An inner binary on the right has no
+            // admitted HIR stride or MIR/LIR lowering slice, so it keeps the
+            // capability drain through the fallback below.
+            const bool leftIsInnerBinary =
+                closureTree.node(binaryLeft).kind == ast::SyntaxKind::BinaryExpr;
+            const bool rightIsInnerBinary =
+                closureTree.node(binaryRight).kind == ast::SyntaxKind::BinaryExpr;
+            if (leftIsInnerBinary && !rightIsInnerBinary && closureParameterCount == 2) {
+              const ast::NodeId innerNode = binaryLeft;
+              const ast::NodeId outerOtherNode = binaryRight;
+              const ast::NodeId innerLeft(
+                  closureTree.node(innerNode).payload.words[ast::kBinaryExprLhsWord]);
+              const ast::NodeId innerRight(
+                  closureTree.node(innerNode).payload.words[ast::kBinaryExprRhsWord]);
+              const bool innerLeavesAreParams =
+                  closureTree.contains(innerLeft) && closureTree.contains(innerRight) &&
+                  closureTree.node(innerLeft).kind == ast::SyntaxKind::IdentExpr &&
+                  closureTree.node(innerRight).kind == ast::SyntaxKind::IdentExpr;
+              const bool outerOtherIsLiteral =
+                  closureTree.node(outerOtherNode).kind == ast::SyntaxKind::IntLiteral;
+              if (innerLeavesAreParams && outerOtherIsLiteral) {
+                parameterNestedClosure = true;
+                parameterNestedOuterNode = parameterClosureValue;
+                parameterNestedInnerNode = innerNode;
+                parameterBodyLeaves.add(innerLeft);
+                parameterBodyLeaves.add(innerRight);
+              } else {
+                return rejectClosureCapability();
+              }
+            } else if (leftIsIdent && rightIsIdent) {
+              if (closureParameterCount != 2) { return rejectClosureCapability(); }
+              parameterBodyLeaves.add(binaryLeft);
+              parameterBodyLeaves.add(binaryRight);
+            } else if (closureParameterCount == 1 &&
+                       ((leftIsIdent && rightIsLiteral) || (leftIsLiteral && rightIsIdent))) {
+              parameterLiteralArithmetic = true;
+              parameterLiteralNode = leftIsLiteral ? binaryLeft : binaryRight;
+              parameterLiteralLeafNode = leftIsIdent ? binaryLeft : binaryRight;
+              parameterBodyLeaves.add(parameterLiteralLeafNode);
             } else {
               return rejectClosureCapability();
             }
-          } else if (leftIsIdent && rightIsIdent) {
-            if (closureParameterCount != 2) { return rejectClosureCapability(); }
-            parameterBodyLeaves.add(binaryLeft);
-            parameterBodyLeaves.add(binaryRight);
-          } else if (closureParameterCount == 1 &&
-                     ((leftIsIdent && rightIsLiteral) || (leftIsLiteral && rightIsIdent))) {
-            parameterLiteralArithmetic = true;
-            parameterLiteralNode = leftIsLiteral ? binaryLeft : binaryRight;
-            parameterLiteralLeafNode = leftIsIdent ? binaryLeft : binaryRight;
-            parameterBodyLeaves.add(parameterLiteralLeafNode);
-          } else {
+          }
+          const ast::NodeId closureParameterListId(
+              closureTree.node(closure.node).payload.words[parameterListWord]);
+          if (!closureTree.contains(closureParameterListId) ||
+              closureTree.node(closureParameterListId).kind !=
+                  ast::SyntaxKind::FunctionParameterList) {
             return rejectClosureCapability();
           }
-        }
-        const ast::NodeId closureParameterListId(
-            closureTree.node(closure.node).payload.words[parameterListWord]);
-        if (!closureTree.contains(closureParameterListId) ||
-            closureTree.node(closureParameterListId).kind !=
-                ast::SyntaxKind::FunctionParameterList) {
-          return rejectClosureCapability();
-        }
-        const ast::NodeList closureParameterNodes{
-            closureTree.node(closureParameterListId)
-                .payload.words[ast::kFunctionParameterListParamsFirstWord],
-            closureTree.node(closureParameterListId)
-                .payload.words[ast::kFunctionParameterListParamsSizeWord]};
-        if (closureParameterNodes.size != closureParameterCount) {
-          return rejectClosureCapability();
-        }
-        // Resolve each body leaf to a distinct declared parameter index.
-        zc::Vector<size_t> resolvedParameterIndices;
-        for (const ast::NodeId leaf : parameterBodyLeaves) {
-          zc::Maybe<size_t> resolvedIndex;
-          ZC_IF_SOME(parameterBinding, resolvedOwnerLocal(bound.bindings(), leaf)) {
-            for (size_t parameterIndex = 0; parameterIndex < closureParameterCount;
-                 ++parameterIndex) {
-              const ast::NodeId parameterNode =
-                  closureTree.list(closureParameterNodes)[parameterIndex];
-              for (const auto& local : bound.definitions().ownerLocalBindings()) {
-                if (local.binding != parameterBinding) { continue; }
-                if (local.node == parameterNode &&
-                    local.site.value().is<binder::DeclarationDefinitionSite>()) {
-                  resolvedIndex = parameterIndex;
+          const ast::NodeList closureParameterNodes{
+              closureTree.node(closureParameterListId)
+                  .payload.words[ast::kFunctionParameterListParamsFirstWord],
+              closureTree.node(closureParameterListId)
+                  .payload.words[ast::kFunctionParameterListParamsSizeWord]};
+          if (closureParameterNodes.size != closureParameterCount) {
+            return rejectClosureCapability();
+          }
+          // Resolve each body leaf to a distinct declared parameter index.
+          zc::Vector<size_t> resolvedParameterIndices;
+          for (const ast::NodeId leaf : parameterBodyLeaves) {
+            zc::Maybe<size_t> resolvedIndex;
+            ZC_IF_SOME(parameterBinding, resolvedOwnerLocal(bound.bindings(), leaf)) {
+              for (size_t parameterIndex = 0; parameterIndex < closureParameterCount;
+                   ++parameterIndex) {
+                const ast::NodeId parameterNode =
+                    closureTree.list(closureParameterNodes)[parameterIndex];
+                for (const auto& local : bound.definitions().ownerLocalBindings()) {
+                  if (local.binding != parameterBinding) { continue; }
+                  if (local.node == parameterNode &&
+                      local.site.value().is<binder::DeclarationDefinitionSite>()) {
+                    resolvedIndex = parameterIndex;
+                  }
+                  break;
                 }
-                break;
+                if (resolvedIndex != zc::none) { break; }
               }
-              if (resolvedIndex != zc::none) { break; }
             }
+            if (resolvedIndex == zc::none) { return rejectClosureCapability(); }
+            size_t leafIndex = 0;
+            ZC_IF_SOME(value, resolvedIndex) { leafIndex = value; }
+            for (const auto existing : resolvedParameterIndices) {
+              if (existing == leafIndex) { return rejectClosureCapability(); }
+            }
+            resolvedParameterIndices.add(leafIndex);
           }
-          if (resolvedIndex == zc::none) { return rejectClosureCapability(); }
-          size_t leafIndex = 0;
-          ZC_IF_SOME(value, resolvedIndex) { leafIndex = value; }
-          for (const auto existing : resolvedParameterIndices) {
-            if (existing == leafIndex) { return rejectClosureCapability(); }
-          }
-          resolvedParameterIndices.add(leafIndex);
-        }
-        if (resolvedParameterIndices.size() != parameterBodyLeaves.size()) {
-          return rejectClosureCapability();
-        }
-        if (parameterNestedClosure) {
-          // The two leaves are the inner binary's distinct declared
-          // parameters; the nested shape branch below builds the inner and
-          // outer condition arms, so the flat parameter-arithmetic flags stay
-          // clear.
-          if (resolvedParameterIndices.size() != 2 ||
-              resolvedParameterIndices[0] == resolvedParameterIndices[1]) {
+          if (resolvedParameterIndices.size() != parameterBodyLeaves.size()) {
             return rejectClosureCapability();
           }
-          parameterNestedLeftIndex = resolvedParameterIndices[0];
-          parameterNestedRightIndex = resolvedParameterIndices[1];
-        } else if (parameterLiteralArithmetic) {
-          // The sole identifier leaf resolves to the one declared parameter;
-          // the constant operand is reconciled to a checked literal fact at
-          // arm construction.
-          if (parameterBodyLeaves.size() != 1 || resolvedParameterIndices[0] != 0) {
-            return rejectClosureCapability();
+          if (parameterNestedClosure) {
+            // The two leaves are the inner binary's distinct declared
+            // parameters; the nested shape branch below builds the inner and
+            // outer condition arms, so the flat parameter-arithmetic flags stay
+            // clear.
+            if (resolvedParameterIndices.size() != 2 ||
+                resolvedParameterIndices[0] == resolvedParameterIndices[1]) {
+              return rejectClosureCapability();
+            }
+            parameterNestedLeftIndex = resolvedParameterIndices[0];
+            parameterNestedRightIndex = resolvedParameterIndices[1];
+          } else if (parameterLiteralArithmetic) {
+            // The sole identifier leaf resolves to the one declared parameter;
+            // the constant operand is reconciled to a checked literal fact at
+            // arm construction.
+            if (parameterBodyLeaves.size() != 1 || resolvedParameterIndices[0] != 0) {
+              return rejectClosureCapability();
+            }
+            parameterLiteralParameterIndex = resolvedParameterIndices[0];
+          } else if (parameterBodyLeaves.size() == 1) {
+            returnedClosureParameter = resolvedParameterIndices[0];
+          } else {
+            parameterArithmetic = true;
+            parameterArithmeticLeftIndex = resolvedParameterIndices[0];
+            parameterArithmeticRightIndex = resolvedParameterIndices[1];
           }
-          parameterLiteralParameterIndex = resolvedParameterIndices[0];
-        } else if (parameterBodyLeaves.size() == 1) {
-          returnedClosureParameter = resolvedParameterIndices[0];
-        } else {
-          parameterArithmetic = true;
-          parameterArithmeticLeftIndex = resolvedParameterIndices[0];
-          parameterArithmeticRightIndex = resolvedParameterIndices[1];
         }
         auto valueSpan =
             bound.parsedModule().spanFor(closureTree.node(parameterClosureValue).range);
@@ -14642,6 +14743,238 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           for (const auto& publishedParameter : closureCallable.parameters) {
             closureParameters.add(HirParameter{publishedParameter.parameter.clone(),
                                                publishedParameter.type, closure.source.clone()});
+          }
+          if (parameterSequentialClosure) {
+            // One PrimitiveBinary binding over the two distinct declared
+            // parameters and a trailing return binary over that local (binding
+            // zero) and one integer literal. Both primitive call facts and the
+            // literal fact are reconciled here; every structural or fact
+            // mismatch returns none so the definition keeps its capability drain
+            // instead of emitting a shape the verifier cannot accept.
+            const ast::NodeId fnParameterListId(
+                closureTree.node(closure.node).payload.words[ast::kFunctionExpressionParamsIdWord]);
+            const ast::NodeList fnParameterNodes{
+                closureTree.node(fnParameterListId)
+                    .payload.words[ast::kFunctionParameterListParamsFirstWord],
+                closureTree.node(fnParameterListId)
+                    .payload.words[ast::kFunctionParameterListParamsSizeWord]};
+            auto resolveParameterIndex = [&](ast::NodeId leaf) -> zc::Maybe<size_t> {
+              zc::Maybe<size_t> resolved;
+              ZC_IF_SOME(parameterBinding, resolvedOwnerLocal(bound.bindings(), leaf)) {
+                for (size_t parameterIndex = 0; parameterIndex < closureParameterCount;
+                     ++parameterIndex) {
+                  const ast::NodeId parameterNode =
+                      closureTree.list(fnParameterNodes)[parameterIndex];
+                  for (const auto& local : bound.definitions().ownerLocalBindings()) {
+                    if (local.binding != parameterBinding) { continue; }
+                    if (local.node == parameterNode &&
+                        local.site.value().is<binder::DeclarationDefinitionSite>()) {
+                      resolved = parameterIndex;
+                    }
+                    break;
+                  }
+                  if (resolved != zc::none) { break; }
+                }
+              }
+              return resolved;
+            };
+            auto bindLeftIndex = resolveParameterIndex(sequentialBindingLeftNode);
+            auto bindRightIndex = resolveParameterIndex(sequentialBindingRightNode);
+            if (bindLeftIndex == zc::none || bindRightIndex == zc::none) { return zc::none; }
+            size_t bindLeftSlot = 0;
+            size_t bindRightSlot = 0;
+            ZC_IF_SOME(value, bindLeftIndex) { bindLeftSlot = value; }
+            ZC_IF_SOME(value, bindRightIndex) { bindRightSlot = value; }
+            if (bindLeftSlot == bindRightSlot) { return zc::none; }
+            auto bindCallIndex = factIndex(facts.calls(), sequentialBindingInitNode);
+            auto returnCallIndex = factIndex(facts.calls(), sequentialReturnValueNode);
+            auto literalIndex = factIndex(facts.literals(), sequentialReturnLiteralNode);
+            if (bindCallIndex == zc::none || returnCallIndex == zc::none ||
+                literalIndex == zc::none) {
+              return zc::none;
+            }
+            size_t bindCallSlot = 0;
+            size_t returnCallSlot = 0;
+            size_t literalSlot = 0;
+            ZC_IF_SOME(value, bindCallIndex) { bindCallSlot = value; }
+            ZC_IF_SOME(value, returnCallIndex) { returnCallSlot = value; }
+            ZC_IF_SOME(value, literalIndex) { literalSlot = value; }
+            const auto& bindInvocation = facts.calls().entries()[bindCallSlot].value.invocation;
+            const auto& returnInvocation = facts.calls().entries()[returnCallSlot].value.invocation;
+            const auto& literalFact = facts.literals().entries()[literalSlot].value;
+            const auto bindSelected = bindInvocation.selected.variant();
+            const auto returnSelected = returnInvocation.selected.variant();
+            const ast::NodeId returnCallLeft(
+                closureTree.node(sequentialReturnValueNode).payload.words[ast::kBinaryExprLhsWord]);
+            const ast::NodeId returnCallRight(
+                closureTree.node(sequentialReturnValueNode).payload.words[ast::kBinaryExprRhsWord]);
+            if (!bindSelected.is<checker::checked::PrimitiveCallable>() ||
+                !returnSelected.is<checker::checked::PrimitiveCallable>() ||
+                bindInvocation.arguments.size() != 2 || returnInvocation.arguments.size() != 2 ||
+                bindInvocation.arguments[0].sourceNode != sequentialBindingLeftNode ||
+                bindInvocation.arguments[1].sourceNode != sequentialBindingRightNode ||
+                returnInvocation.arguments[0].sourceNode != returnCallLeft ||
+                returnInvocation.arguments[1].sourceNode != returnCallRight ||
+                bindInvocation.receiver != zc::none || returnInvocation.receiver != zc::none ||
+                bindInvocation.substitutions != zc::none ||
+                returnInvocation.substitutions != zc::none ||
+                bindInvocation.witnesses != zc::none || returnInvocation.witnesses != zc::none ||
+                bindInvocation.raises != zc::none || returnInvocation.raises != zc::none ||
+                bindInvocation.successType != closureCallable.success ||
+                returnInvocation.successType != closureCallable.success ||
+                literalFact.node != sequentialReturnLiteralNode ||
+                literalFact.type != closureCallable.success) {
+              return zc::none;
+            }
+            const auto bindOperation =
+                bindSelected.get<checker::checked::PrimitiveCallable>().operation;
+            const auto returnOperation =
+                returnSelected.get<checker::checked::PrimitiveCallable>().operation;
+            if (!isScalarArithmeticOperation(bindOperation) ||
+                !isScalarArithmeticOperation(returnOperation)) {
+              return zc::none;
+            }
+            auto patternSpan =
+                bound.parsedModule().spanFor(closureTree.node(sequentialBindingPatternNode).range);
+            auto initSpan =
+                bound.parsedModule().spanFor(closureTree.node(sequentialBindingInitNode).range);
+            auto bindLeftSpan =
+                bound.parsedModule().spanFor(closureTree.node(sequentialBindingLeftNode).range);
+            auto bindRightSpan =
+                bound.parsedModule().spanFor(closureTree.node(sequentialBindingRightNode).range);
+            auto localSpan =
+                bound.parsedModule().spanFor(closureTree.node(sequentialReturnLocalNode).range);
+            auto literalSpan =
+                bound.parsedModule().spanFor(closureTree.node(sequentialReturnLiteralNode).range);
+            auto returnValueSpanSequential =
+                bound.parsedModule().spanFor(closureTree.node(sequentialReturnValueNode).range);
+            if (patternSpan == zc::none || initSpan == zc::none || bindLeftSpan == zc::none ||
+                bindRightSpan == zc::none || localSpan == zc::none || literalSpan == zc::none ||
+                returnValueSpanSequential == zc::none) {
+              return zc::none;
+            }
+            const auto& operandType = closureCallable.success;
+            auto bindLeftOperand = PendingSequentialBinaryOperand{
+                SequentialBinaryOperandKind::ParameterReference,
+                operandType,
+                ZC_ASSERT_NONNULL(bindLeftSpan).clone(),
+                zc::Maybe<checker::checked::CanonicalConstValue>(),
+                closureCallable.parameters[bindLeftSlot].parameter.clone(),
+                0,
+                zc::Maybe<checker::PrimitiveOperation>(),
+                zc::Maybe<PendingSequentialBinaryLeafOperand>(),
+                zc::Maybe<PendingSequentialBinaryLeafOperand>(),
+                sequentialBindingLeftNode};
+            auto bindRightOperand = PendingSequentialBinaryOperand{
+                SequentialBinaryOperandKind::ParameterReference,
+                operandType,
+                ZC_ASSERT_NONNULL(bindRightSpan).clone(),
+                zc::Maybe<checker::checked::CanonicalConstValue>(),
+                closureCallable.parameters[bindRightSlot].parameter.clone(),
+                0,
+                zc::Maybe<checker::PrimitiveOperation>(),
+                zc::Maybe<PendingSequentialBinaryLeafOperand>(),
+                zc::Maybe<PendingSequentialBinaryLeafOperand>(),
+                sequentialBindingRightNode};
+            auto binding =
+                PendingSequentialBinding{closureCallable.success,
+                                         ZC_ASSERT_NONNULL(patternSpan).clone(),
+                                         ZC_ASSERT_NONNULL(initSpan).clone(),
+                                         SequentialInitializerKind::PrimitiveBinary,
+                                         zc::Maybe<checker::checked::CanonicalConstValue>(),
+                                         zc::Maybe<HirNominalAggregateExpression>(),
+                                         zc::Maybe<HirDirectCallExpression>(),
+                                         zc::Maybe<identity::CallableParameterKey>(),
+                                         0,
+                                         bindOperation,
+                                         operandType,
+                                         zc::mv(bindLeftOperand),
+                                         zc::mv(bindRightOperand),
+                                         /*isUnaryDesugar=*/false,
+                                         zc::Maybe<identity::CallableParameterKey>(),
+                                         /*ternaryConditionIsLocal=*/false,
+                                         /*ternaryConditionLocal=*/0,
+                                         /*ternaryConditionIsLiteral=*/false,
+                                         closureCallable.success,
+                                         zc::Maybe<checker::checked::CanonicalConstValue>(),
+                                         zc::Maybe<checker::checked::CanonicalConstValue>(),
+                                         zc::Maybe<checker::checked::CanonicalConstValue>(),
+                                         zc::Maybe<identity::SourceSpan>(),
+                                         zc::Maybe<identity::SourceSpan>(),
+                                         zc::Maybe<identity::SourceSpan>(),
+                                         /*isMatchExpr=*/false,
+                                         /*matchHasDefaultArm=*/false,
+                                         sequentialBindingDeclaratorNode,
+                                         sequentialBindingInitNode};
+            auto returnLocalOperand =
+                PendingSequentialBinaryOperand{SequentialBinaryOperandKind::LocalReference,
+                                               operandType,
+                                               ZC_ASSERT_NONNULL(localSpan).clone(),
+                                               zc::Maybe<checker::checked::CanonicalConstValue>(),
+                                               zc::Maybe<identity::CallableParameterKey>(),
+                                               /*referencedLocal=*/0,
+                                               zc::Maybe<checker::PrimitiveOperation>(),
+                                               zc::Maybe<PendingSequentialBinaryLeafOperand>(),
+                                               zc::Maybe<PendingSequentialBinaryLeafOperand>(),
+                                               sequentialReturnLocalNode};
+            auto returnLiteralOperand =
+                PendingSequentialBinaryOperand{SequentialBinaryOperandKind::Literal,
+                                               operandType,
+                                               ZC_ASSERT_NONNULL(literalSpan).clone(),
+                                               literalFact.literal.clone(),
+                                               zc::Maybe<identity::CallableParameterKey>(),
+                                               0,
+                                               zc::Maybe<checker::PrimitiveOperation>(),
+                                               zc::Maybe<PendingSequentialBinaryLeafOperand>(),
+                                               zc::Maybe<PendingSequentialBinaryLeafOperand>(),
+                                               sequentialReturnLiteralNode};
+            auto trailingLeft = sequentialReturnLiteralOnLeft ? zc::mv(returnLiteralOperand)
+                                                              : zc::mv(returnLocalOperand);
+            auto trailingRight = sequentialReturnLiteralOnLeft ? zc::mv(returnLocalOperand)
+                                                               : zc::mv(returnLiteralOperand);
+            auto returnBinary =
+                PendingSequentialBinding{closureCallable.success,
+                                         ZC_ASSERT_NONNULL(returnValueSpanSequential).clone(),
+                                         ZC_ASSERT_NONNULL(returnValueSpanSequential).clone(),
+                                         SequentialInitializerKind::PrimitiveBinary,
+                                         zc::Maybe<checker::checked::CanonicalConstValue>(),
+                                         zc::Maybe<HirNominalAggregateExpression>(),
+                                         zc::Maybe<HirDirectCallExpression>(),
+                                         zc::Maybe<identity::CallableParameterKey>(),
+                                         0,
+                                         returnOperation,
+                                         operandType,
+                                         zc::mv(trailingLeft),
+                                         zc::mv(trailingRight),
+                                         /*isUnaryDesugar=*/false,
+                                         zc::Maybe<identity::CallableParameterKey>(),
+                                         /*ternaryConditionIsLocal=*/false,
+                                         /*ternaryConditionLocal=*/0,
+                                         /*ternaryConditionIsLiteral=*/false,
+                                         closureCallable.success,
+                                         zc::Maybe<checker::checked::CanonicalConstValue>(),
+                                         zc::Maybe<checker::checked::CanonicalConstValue>(),
+                                         zc::Maybe<checker::checked::CanonicalConstValue>(),
+                                         zc::Maybe<identity::SourceSpan>(),
+                                         zc::Maybe<identity::SourceSpan>(),
+                                         zc::Maybe<identity::SourceSpan>(),
+                                         /*isMatchExpr=*/false,
+                                         /*matchHasDefaultArm=*/false,
+                                         /*declaratorNode=*/ast::NodeId(),
+                                         sequentialReturnValueNode};
+            zc::Vector<PendingSequentialBinding> pendingBindings;
+            pendingBindings.add(zc::mv(binding));
+            PendingSequentialLocalReturn sequential{
+                zc::mv(pendingBindings),
+                zc::Vector<PendingSequentialLocalWrite>(),
+                zc::Maybe<PendingSequentialBinding>(zc::mv(returnBinary)),
+                closureCallable.success,
+                zc::Maybe<identity::CallableParameterKey>(),
+                /*returnLocal=*/0,
+                ZC_ASSERT_NONNULL(returnValueSpanSequential).clone(),
+                zc::Maybe<checker::checked::CanonicalConstValue>(),
+                zc::Vector<SequentialLocalBinding>()};
+            return PendingFunctionShape{SequentialLocalReturn{zc::mv(sequential)}};
           }
           if (parameterUnaryClosure) {
             // One declared parameter combined with a synthetic constant in one

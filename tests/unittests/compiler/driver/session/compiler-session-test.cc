@@ -1181,16 +1181,42 @@ ZC_TEST("CompilerSessionTest.TwoParameterNestedBinaryExpressionClosureLowersToHi
   ZC_EXPECT(session->getOwnershipCheckedMirModules()[0].builtMir().functions().size() == 2);
 }
 
-ZC_TEST("CompilerSessionTest.TwoParameterNestedBinaryBlockClosureKeepsCapabilityDrain") {
-  // RFC 0057 slice 2 boundary: a block-body nested closure with a leading let
-  // binding and a trailing binary return (`fn(a, b) { let t = a + b; return
-  // t + 1; }`) is a multi-statement sequential-local body outside the
-  // expression-body nested-arm slice. It keeps the per-definition ZOM4099
-  // capability drain (no HIR module, zero incidents) until the sequential-local
-  // closure rail lands.
+ZC_TEST("CompilerSessionTest.TwoParameterSequentialLocalBlockClosureLowersToHirAndMir") {
+  // RFC 0057 slice 2 sequential-local target: a non-capturing two-parameter
+  // block-body function-expression closure whose leading let binding computes
+  // one arithmetic binary over both declared parameters and whose trailing
+  // return combines that local with an integer literal
+  // (`fn(a, b) { let t = a + b; return t + 1; }`), reached through a
+  // whole-local copy chain. The closure emits a SequentialLocalReturn shape
+  // (one PrimitiveBinary binding plus a local-plus-literal return binary) and
+  // publishes HIR and MIR with zero diagnostics and zero incidents.
   auto session = packageSession(
       "fn entry() -> i32 { let f = fn(a: i32, b: i32) -> i32 { "
       "let t = a + b; return t + 1; }; let g = f; return g(20, 21); }\n"_zc);
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(session->checkSources());
+  ZC_EXPECT(!session->hasDiagnosticErrors());
+  ZC_EXPECT(session->getIncidents().empty());
+  ZC_REQUIRE(session->getVerifiedHirModules().size() == 1);
+  const auto& hir = session->getVerifiedHirModules()[0];
+  ZC_EXPECT(hir.functions().size() == 2);
+  ZC_EXPECT(hir.closureAddresses().size() == 1);
+  ZC_EXPECT(hir.indirectCalls().size() == 1);
+  ZC_REQUIRE(session->getOwnershipCheckedMirModules().size() == 1);
+  ZC_EXPECT(session->getOwnershipCheckedMirModules()[0].builtMir().functions().size() == 2);
+}
+
+ZC_TEST("CompilerSessionTest.ThreeStatementSequentialBlockClosureKeepsCapabilityDrain") {
+  // RFC 0057 slice 2 boundary: the sequential-local closure rail admits exactly
+  // one leading binding plus a trailing return (two statements). A block with
+  // two leading bindings (`fn(a, b) { let t = a + b; let u = t; return u + 1;
+  // }`) stays outside that slice and keeps the per-definition ZOM4099 capability
+  // drain (no HIR module, zero incidents).
+  auto session = packageSession(
+      "fn entry() -> i32 { let f = fn(a: i32, b: i32) -> i32 { "
+      "let t = a + b; let u = t; return u + 1; }; let g = f; return g(20, 21); }\n"_zc);
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
