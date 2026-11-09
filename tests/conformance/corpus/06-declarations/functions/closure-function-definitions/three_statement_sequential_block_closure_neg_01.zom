@@ -1,0 +1,9 @@
+// RFC 0057 slice 2 sequential-local negative: a block-body closure with two
+// leading let bindings before the trailing return is beyond the one-binding
+// sequential-local slice. The owning function keeps one ZOM4099 capability
+// diagnostic with zero incidents rather than reaching an invariant failure.
+fn entry() -> i32 {
+  let f = fn(a: i32, b: i32) -> i32 { let t = a + b; let u = t; return u + 1; };
+  let g = f;
+  return g(20, 21);
+}

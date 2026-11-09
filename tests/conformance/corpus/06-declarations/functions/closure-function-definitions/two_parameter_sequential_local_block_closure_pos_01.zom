@@ -1,0 +1,11 @@
+// RFC 0057 slice 2 sequential-local positive: a non-capturing two-parameter
+// block-body function-expression closure whose leading let binding computes an
+// arithmetic binary over both parameters and whose trailing return combines
+// that local with an integer literal, reached through a whole-local copy chain.
+// It emits a SequentialLocalReturn shape with one body temporary and needs no
+// experimental capture gate because it captures nothing.
+fn entry() -> i32 {
+  let f = fn(a: i32, b: i32) -> i32 { let t = a + b; return t + 1; };
+  let g = f;
+  return g(20, 21);
+}

@@ -1,0 +1,5 @@
+section: "§4 FunctionExpression block body"
+covers_rule: "functionExpression, functionParameterList, blockBody, letStatement, returnStatement, binaryExpression"
+expected: "ACCEPT"
+notes:
+  - "The two-binding sequential block source parses legally; it drains semantically (ZOM4099), never as a grammar rejection or an internal incident."
