@@ -2651,10 +2651,6 @@
       "exitCode": 1,
       "sha256": "0212b02a7e5e9619f4dfb499bbdbbdc5deac9bf2ffcc1e03176b2c0f0ef02022"
     },
-    "06-declarations/functions/closure-function-definitions/nested_binary_inner_on_right_neg_01.zom": {
-      "exitCode": 1,
-      "sha256": "db3e3ce9ef62a57106f9e427c6c5ea091700e079689786a346dd4d6258a905fc"
-    },
     "06-declarations/functions/closure-function-definitions/one_parameter_literal_arithmetic_expression_body_pos_01.zom": {
       "exitCode": 0,
       "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
@@ -2688,6 +2684,10 @@
       "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     "06-declarations/functions/closure-function-definitions/two_parameter_nested_binary_expression_body_pos_01.zom": {
+      "exitCode": 0,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    "06-declarations/functions/closure-function-definitions/two_parameter_nested_binary_inner_on_right_pos_01.zom": {
       "exitCode": 0,
       "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
