@@ -1383,6 +1383,69 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           }
         }
       }
+      // RFC 0057 slice 2 one-level nested form: a two-parameter non-capturing
+      // closure whose body binary has exactly one operand that is itself a
+      // primitive binary over both parameters, with an integer literal as the
+      // other outer operand. The builder materializes the inner binary to a
+      // nested arm (body temporary); only integer arithmetic at depth one with
+      // the nested binary on the left is admitted, matching the builder gate.
+      // The probe still recognizes the mirrored shape so that any future
+      // producer drift fails the tree validation below instead of miscompiling.
+      bool parameterNestedClosure = false;
+      bool parameterNestedInnerOnLeft = false;
+      ast::NodeId parameterNestedInnerNode;
+      ast::NodeId parameterNestedOuterNode;
+      ast::NodeId parameterNestedOuterOtherNode;
+      if (parameterClosure && closureParameterCount == 2) {
+        ast::NodeId parameterNestedValue;
+        if (closureIsFunctionExpression) {
+          auto probeShape =
+              functionReturnShape(closureTree, closureTree.node(closureDefinition.node));
+          if (probeShape != zc::none) {
+            parameterNestedValue = ZC_ASSERT_NONNULL(probeShape).value;
+          }
+        } else {
+          const ast::NodeId probeBlock(closureTree.node(closureDefinition.node)
+                                           .payload.words[ast::kLambdaExpressionBodyWord]);
+          if (!closureTree.contains(probeBlock)) {
+            parameterNestedValue =
+                ast::NodeId(closureTree.node(closureDefinition.node)
+                                .payload.words[ast::kLambdaExpressionExprBodyWord]);
+          }
+        }
+        if (closureTree.contains(parameterNestedValue) &&
+            closureTree.node(parameterNestedValue).kind == ast::SyntaxKind::BinaryExpr) {
+          const ast::NodeId probeLeft(
+              closureTree.node(parameterNestedValue).payload.words[ast::kBinaryExprLhsWord]);
+          const ast::NodeId probeRight(
+              closureTree.node(parameterNestedValue).payload.words[ast::kBinaryExprRhsWord]);
+          const bool leftInner = closureTree.contains(probeLeft) &&
+                                 closureTree.node(probeLeft).kind == ast::SyntaxKind::BinaryExpr;
+          const bool rightInner = closureTree.contains(probeRight) &&
+                                  closureTree.node(probeRight).kind == ast::SyntaxKind::BinaryExpr;
+          if (leftInner != rightInner) {
+            const ast::NodeId innerNode = leftInner ? probeLeft : probeRight;
+            const ast::NodeId outerOther = leftInner ? probeRight : probeLeft;
+            const ast::NodeId innerLeft(
+                closureTree.node(innerNode).payload.words[ast::kBinaryExprLhsWord]);
+            const ast::NodeId innerRight(
+                closureTree.node(innerNode).payload.words[ast::kBinaryExprRhsWord]);
+            const bool innerLeavesParams =
+                closureTree.contains(innerLeft) && closureTree.contains(innerRight) &&
+                closureTree.node(innerLeft).kind == ast::SyntaxKind::IdentExpr &&
+                closureTree.node(innerRight).kind == ast::SyntaxKind::IdentExpr;
+            const bool outerOtherLiteral =
+                closureTree.node(outerOther).kind == ast::SyntaxKind::IntLiteral;
+            if (innerLeavesParams && outerOtherLiteral) {
+              parameterNestedClosure = true;
+              parameterNestedInnerOnLeft = leftInner;
+              parameterNestedInnerNode = innerNode;
+              parameterNestedOuterNode = parameterNestedValue;
+              parameterNestedOuterOtherNode = outerOther;
+            }
+          }
+        }
+      }
       if (!closureCaptures && closureParameterCount != 0 && !parameterClosure) {
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                             ir::IrFailureKind::InvalidFact, module, registries,
@@ -1461,6 +1524,143 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       if (mixedParameterCapture || captureLiteralArithmetic || parameterArithmeticClosure ||
           parameterLiteralArithmeticClosure || parameterUnaryClosure) {
         binaryClosure = true;
+      }
+      if (parameterNestedClosure) {
+        // One-level nested closure: an eight source-preorder node stride —
+        // function F, body F+1, inner binary F+2, outer literal F+3, outer
+        // binary F+4, return F+5, then the inner binary's two parameter
+        // references at F+6 and F+7. Validate it as a self-contained tree by
+        // node id and skip the fixed-stride record collection below.
+        const size_t nestedStride = 8;
+        const HirNodeId innerBinaryId = hirId(expectedFunction + 2);
+        const HirNodeId outerLiteralId = hirId(expectedFunction + 3);
+        const HirNodeId outerBinaryId = hirId(expectedFunction + 4);
+        const HirNodeId nestedReturnId = hirId(expectedFunction + 5);
+        const HirNodeId innerLeftId = hirId(expectedFunction + 6);
+        const HirNodeId innerRightId = hirId(expectedFunction + 7);
+        auto findBinary = [&](HirNodeId node) -> zc::Maybe<const HirPrimitiveBinaryExpression&> {
+          for (const auto& candidateBinary : candidate.impl->primitiveBinaryOperations) {
+            if (candidateBinary.node == node) return candidateBinary;
+          }
+          return zc::none;
+        };
+        auto findParameterRef =
+            [&](HirNodeId node) -> zc::Maybe<const HirParameterReferenceExpression&> {
+          for (const auto& candidateReference : candidate.impl->parameterReferences) {
+            if (candidateReference.node == node) return candidateReference;
+          }
+          return zc::none;
+        };
+        auto findLiteral = [&](HirNodeId node) -> zc::Maybe<const HirScalarLiteralExpression&> {
+          for (const auto& candidateExpression : candidate.impl->expressions) {
+            if (candidateExpression.node == node) return candidateExpression;
+          }
+          return zc::none;
+        };
+        auto findReturn = [&](HirNodeId node) -> zc::Maybe<const HirReturnStatement&> {
+          for (const auto& candidateReturn : candidate.impl->returns) {
+            if (candidateReturn.node == node) return candidateReturn;
+          }
+          return zc::none;
+        };
+        const auto innerBinary = findBinary(innerBinaryId);
+        const auto outerBinary = findBinary(outerBinaryId);
+        const auto outerLiteral = findLiteral(outerLiteralId);
+        const auto innerLeftRef = findParameterRef(innerLeftId);
+        const auto innerRightRef = findParameterRef(innerRightId);
+        const auto nestedReturn = findReturn(nestedReturnId);
+        if (innerBinary == zc::none || outerBinary == zc::none || outerLiteral == zc::none ||
+            innerLeftRef == zc::none || innerRightRef == zc::none || nestedReturn == zc::none ||
+            function.node != hirId(expectedFunction) || block.node != hirId(expectedFunction + 1) ||
+            function.body != block.node || block.statements.size() != 1 ||
+            block.statements[0] != nestedReturnId || function.receiver != zc::none ||
+            function.parameters.size() != 2) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        // Reconcile the inner and outer checked call facts and the literal fact.
+        auto innerCallIndex = factIndex(facts.calls(), parameterNestedInnerNode);
+        auto outerCallIndex = factIndex(facts.calls(), parameterNestedOuterNode);
+        auto outerLiteralIndex = factIndex(facts.literals(), parameterNestedOuterOtherNode);
+        if (innerCallIndex == zc::none || outerCallIndex == zc::none ||
+            outerLiteralIndex == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        size_t innerCallSlot = 0;
+        size_t outerCallSlot = 0;
+        size_t outerLiteralSlot = 0;
+        ZC_IF_SOME(value, innerCallIndex) { innerCallSlot = value; }
+        ZC_IF_SOME(value, outerCallIndex) { outerCallSlot = value; }
+        ZC_IF_SOME(value, outerLiteralIndex) { outerLiteralSlot = value; }
+        const auto& innerInvocation = facts.calls().entries()[innerCallSlot].value.invocation;
+        const auto& outerInvocation = facts.calls().entries()[outerCallSlot].value.invocation;
+        const auto& outerLiteralFact = facts.literals().entries()[outerLiteralSlot].value;
+        const auto innerSelected = innerInvocation.selected.variant();
+        const auto outerSelected = outerInvocation.selected.variant();
+        const ast::NodeId innerLeftNode(
+            closureTree.node(parameterNestedInnerNode).payload.words[ast::kBinaryExprLhsWord]);
+        const ast::NodeId innerRightNode(
+            closureTree.node(parameterNestedInnerNode).payload.words[ast::kBinaryExprRhsWord]);
+        const identity::CallableParameterKey expectedLeftKey =
+            earlyCallable.parameters[0].parameter.clone();
+        const identity::CallableParameterKey expectedRightKey =
+            earlyCallable.parameters[1].parameter.clone();
+        const bool treeValid =
+            parameterNestedInnerOnLeft && innerSelected.is<checker::checked::PrimitiveCallable>() &&
+            outerSelected.is<checker::checked::PrimitiveCallable>() &&
+            isScalarArithmeticOperation(
+                innerSelected.get<checker::checked::PrimitiveCallable>().operation) &&
+            isScalarArithmeticOperation(
+                outerSelected.get<checker::checked::PrimitiveCallable>().operation) &&
+            innerInvocation.arguments.size() == 2 && outerInvocation.arguments.size() == 2 &&
+            innerInvocation.arguments[0].sourceNode == innerLeftNode &&
+            innerInvocation.arguments[1].sourceNode == innerRightNode &&
+            innerInvocation.receiver == zc::none && outerInvocation.receiver == zc::none &&
+            innerInvocation.substitutions == zc::none &&
+            outerInvocation.substitutions == zc::none && innerInvocation.witnesses == zc::none &&
+            outerInvocation.witnesses == zc::none && innerInvocation.raises == zc::none &&
+            outerInvocation.raises == zc::none &&
+            innerInvocation.successType == function.resultType &&
+            outerInvocation.successType == function.resultType &&
+            outerLiteralFact.node == parameterNestedOuterOtherNode &&
+            outerLiteralFact.type == function.resultType &&
+            ZC_ASSERT_NONNULL(innerBinary).operation ==
+                innerSelected.get<checker::checked::PrimitiveCallable>().operation &&
+            ZC_ASSERT_NONNULL(outerBinary).operation ==
+                outerSelected.get<checker::checked::PrimitiveCallable>().operation &&
+            ZC_ASSERT_NONNULL(innerBinary).operandType == function.resultType &&
+            ZC_ASSERT_NONNULL(innerBinary).type == function.resultType &&
+            ZC_ASSERT_NONNULL(outerBinary).operandType == function.resultType &&
+            ZC_ASSERT_NONNULL(outerBinary).type == function.resultType &&
+            ZC_ASSERT_NONNULL(outerBinary).left ==
+                (parameterNestedInnerOnLeft ? innerBinaryId : outerLiteralId) &&
+            ZC_ASSERT_NONNULL(outerBinary).right ==
+                (parameterNestedInnerOnLeft ? outerLiteralId : innerBinaryId) &&
+            ZC_ASSERT_NONNULL(innerBinary).left == innerLeftId &&
+            ZC_ASSERT_NONNULL(innerBinary).right == innerRightId &&
+            ZC_ASSERT_NONNULL(innerLeftRef).parameter == expectedLeftKey &&
+            ZC_ASSERT_NONNULL(innerRightRef).parameter == expectedRightKey &&
+            ZC_ASSERT_NONNULL(innerLeftRef).type == function.resultType &&
+            ZC_ASSERT_NONNULL(innerRightRef).type == function.resultType &&
+            ZC_ASSERT_NONNULL(innerLeftRef).category == HirValueCategory::Place &&
+            ZC_ASSERT_NONNULL(innerRightRef).category == HirValueCategory::Place &&
+            ZC_ASSERT_NONNULL(outerLiteral).type == function.resultType &&
+            ZC_ASSERT_NONNULL(outerLiteral).category == HirValueCategory::Value &&
+            sameConstant(ZC_ASSERT_NONNULL(outerLiteral).value, outerLiteralFact.literal, module,
+                         registries, semanticTypes) &&
+            ZC_ASSERT_NONNULL(nestedReturn).resultType == function.resultType &&
+            ZC_ASSERT_NONNULL(nestedReturn).value == outerBinaryId &&
+            typeExists(function.resultType, semanticTypes);
+        if (!treeValid) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        nextFunction += nestedStride;
+        continue;
       }
       // A one-capture closure occupies four source-preorder node ids (function,
       // body, return, parameter reference); a two-capture closure occupies six

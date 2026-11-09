@@ -1146,6 +1146,60 @@ ZC_TEST("CompilerSessionTest.TwoParameterArithmeticExpressionBodyClosureLowersTo
   ZC_EXPECT(session->getOwnershipCheckedMirModules()[0].builtMir().functions().size() == 2);
 }
 
+ZC_TEST("CompilerSessionTest.TwoParameterNestedBinaryExpressionClosureLowersToHirAndMir") {
+  // RFC 0057 slice 2 nested (expression body): a non-capturing two-parameter
+  // expression-body lambda whose body is an outer arithmetic binary with a
+  // one-level nested binary over both parameters as one operand and a literal
+  // as the other (`(a, b) -> i32 => (a + b) + 1`), reached through a
+  // whole-local copy chain. The inner binary lowers to a body temporary and the
+  // outer binary combines that temporary with the literal, so HIR publishes
+  // two primitive binary operations while MIR keeps the two parameters, a
+  // temporary, and the result local. HIR and MIR publish with zero diagnostics.
+  auto session = packageSession(
+      "fn entry() -> i32 { let f = (a: i32, b: i32) -> i32 => (a + b) + 1; "
+      "let g = f; return g(20, 21); }\n"_zc);
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(session->checkSources());
+  ZC_EXPECT(!session->hasDiagnosticErrors());
+  ZC_EXPECT(session->getIncidents().empty());
+  ZC_REQUIRE(session->getVerifiedHirModules().size() == 1);
+  const auto& hir = session->getVerifiedHirModules()[0];
+  ZC_EXPECT(hir.functions().size() == 2);
+  ZC_EXPECT(hir.closureAddresses().size() == 1);
+  ZC_EXPECT(hir.indirectCalls().size() == 1);
+  ZC_EXPECT(hir.primitiveBinaryOperations().size() == 2);
+  const auto& indirectCall = hir.indirectCalls()[0];
+  ZC_EXPECT(indirectCall.arguments.size() == 2);
+  size_t closureParameterTotal = 0;
+  for (const auto& function : hir.functions()) {
+    closureParameterTotal += function.parameters.size();
+  }
+  ZC_EXPECT(closureParameterTotal == 2);
+  ZC_REQUIRE(session->getOwnershipCheckedMirModules().size() == 1);
+  ZC_EXPECT(session->getOwnershipCheckedMirModules()[0].builtMir().functions().size() == 2);
+}
+
+ZC_TEST("CompilerSessionTest.TwoParameterNestedBinaryBlockClosureKeepsCapabilityDrain") {
+  // RFC 0057 slice 2 boundary: a block-body nested closure with a leading let
+  // binding and a trailing binary return (`fn(a, b) { let t = a + b; return
+  // t + 1; }`) is a multi-statement sequential-local body outside the
+  // expression-body nested-arm slice. It keeps the per-definition ZOM4099
+  // capability drain (no HIR module, zero incidents) until the sequential-local
+  // closure rail lands.
+  auto session = packageSession(
+      "fn entry() -> i32 { let f = fn(a: i32, b: i32) -> i32 { "
+      "let t = a + b; return t + 1; }; let g = f; return g(20, 21); }\n"_zc);
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(!session->checkSources());
+  ZC_EXPECT(diagnosticCount(*session, diagnostics::DiagID::FunctionBodySemanticsUnavailable) == 1);
+  ZC_EXPECT(session->getVerifiedHirModules().size() == 0);
+  ZC_EXPECT(session->getIncidents().empty());
+}
+
 ZC_TEST("CompilerSessionTest.TwoParameterComparisonClosureLowersToHirAndMir") {
   // RFC 0057 slice 2: a non-capturing two-parameter closure whose body is one
   // relational comparison over both declared i32 parameters, yielding bool

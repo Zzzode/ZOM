@@ -13971,6 +13971,17 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       bool parameterUnaryClosure = false;
       ast::NodeId parameterUnaryNode;
       ast::NodeId parameterUnaryOperandNode;
+      // RFC 0057 slice 2 one-level nested form: the left body-binary operand is
+      // itself a primitive binary over the two declared parameters, while the
+      // right outer operand is an integer literal. The inner binary
+      // materializes to a nested conditional arm (a body temporary); only
+      // integer arithmetic at depth exactly one with the nested binary on the
+      // left is admitted.
+      bool parameterNestedClosure = false;
+      ast::NodeId parameterNestedOuterNode;
+      ast::NodeId parameterNestedInnerNode;
+      size_t parameterNestedLeftIndex = 0;
+      size_t parameterNestedRightIndex = 0;
       // Source anchors and spans. The lambda spelling has no source block or
       // return: hirBodyAnchor/hirReturnAnchor stay sentinel and their spans
       // reuse the closure source span, while the value anchors the body
@@ -14368,7 +14379,39 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               closureTree.node(binaryLeft).kind == ast::SyntaxKind::IntLiteral;
           const bool rightIsLiteral =
               closureTree.node(binaryRight).kind == ast::SyntaxKind::IntLiteral;
-          if (leftIsIdent && rightIsIdent) {
+          // One-level nested form: the LEFT outer operand is itself a binary
+          // whose two leaves are identifier parameters, and the right outer
+          // operand is an integer literal. The inner operands must not nest
+          // further (depth exactly one). An inner binary on the right has no
+          // admitted HIR stride or MIR/LIR lowering slice, so it keeps the
+          // capability drain through the fallback below.
+          const bool leftIsInnerBinary =
+              closureTree.node(binaryLeft).kind == ast::SyntaxKind::BinaryExpr;
+          const bool rightIsInnerBinary =
+              closureTree.node(binaryRight).kind == ast::SyntaxKind::BinaryExpr;
+          if (leftIsInnerBinary && !rightIsInnerBinary && closureParameterCount == 2) {
+            const ast::NodeId innerNode = binaryLeft;
+            const ast::NodeId outerOtherNode = binaryRight;
+            const ast::NodeId innerLeft(
+                closureTree.node(innerNode).payload.words[ast::kBinaryExprLhsWord]);
+            const ast::NodeId innerRight(
+                closureTree.node(innerNode).payload.words[ast::kBinaryExprRhsWord]);
+            const bool innerLeavesAreParams =
+                closureTree.contains(innerLeft) && closureTree.contains(innerRight) &&
+                closureTree.node(innerLeft).kind == ast::SyntaxKind::IdentExpr &&
+                closureTree.node(innerRight).kind == ast::SyntaxKind::IdentExpr;
+            const bool outerOtherIsLiteral =
+                closureTree.node(outerOtherNode).kind == ast::SyntaxKind::IntLiteral;
+            if (innerLeavesAreParams && outerOtherIsLiteral) {
+              parameterNestedClosure = true;
+              parameterNestedOuterNode = parameterClosureValue;
+              parameterNestedInnerNode = innerNode;
+              parameterBodyLeaves.add(innerLeft);
+              parameterBodyLeaves.add(innerRight);
+            } else {
+              return rejectClosureCapability();
+            }
+          } else if (leftIsIdent && rightIsIdent) {
             if (closureParameterCount != 2) { return rejectClosureCapability(); }
             parameterBodyLeaves.add(binaryLeft);
             parameterBodyLeaves.add(binaryRight);
@@ -14428,7 +14471,18 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         if (resolvedParameterIndices.size() != parameterBodyLeaves.size()) {
           return rejectClosureCapability();
         }
-        if (parameterLiteralArithmetic) {
+        if (parameterNestedClosure) {
+          // The two leaves are the inner binary's distinct declared
+          // parameters; the nested shape branch below builds the inner and
+          // outer condition arms, so the flat parameter-arithmetic flags stay
+          // clear.
+          if (resolvedParameterIndices.size() != 2 ||
+              resolvedParameterIndices[0] == resolvedParameterIndices[1]) {
+            return rejectClosureCapability();
+          }
+          parameterNestedLeftIndex = resolvedParameterIndices[0];
+          parameterNestedRightIndex = resolvedParameterIndices[1];
+        } else if (parameterLiteralArithmetic) {
           // The sole identifier leaf resolves to the one declared parameter;
           // the constant operand is reconciled to a checked literal fact at
           // arm construction.
@@ -14654,6 +14708,110 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                 zc::mv(parameterArm), zc::mv(syntheticArm), closureCallable.success,
                 closureCallable.success, ZC_ASSERT_NONNULL(unaryDesugar).binaryOperation,
                 closureValueSpan.clone(), true, parameterUnaryNode}}};
+          }
+          if (parameterNestedClosure) {
+            // One-level nested arithmetic: the inner binary combines the two
+            // declared parameters and lowers to a nested conditional arm (a
+            // body temporary), while the outer binary combines that arm with
+            // one integer literal. Both call facts are reconciled here.
+            const ast::NodeId innerLeft(
+                closureTree.node(parameterNestedInnerNode).payload.words[ast::kBinaryExprLhsWord]);
+            const ast::NodeId innerRight(
+                closureTree.node(parameterNestedInnerNode).payload.words[ast::kBinaryExprRhsWord]);
+            const ast::NodeId outerOtherNode(
+                closureTree.node(parameterNestedOuterNode).payload.words[ast::kBinaryExprRhsWord]);
+            auto innerCallIndex = factIndex(facts.calls(), parameterNestedInnerNode);
+            auto outerCallIndex = factIndex(facts.calls(), parameterNestedOuterNode);
+            auto outerLiteralIndex = factIndex(facts.literals(), outerOtherNode);
+            if (innerCallIndex == zc::none || outerCallIndex == zc::none ||
+                outerLiteralIndex == zc::none) {
+              return zc::none;
+            }
+            size_t innerCallSlot = 0;
+            size_t outerCallSlot = 0;
+            size_t outerLiteralSlot = 0;
+            ZC_IF_SOME(value, innerCallIndex) { innerCallSlot = value; }
+            ZC_IF_SOME(value, outerCallIndex) { outerCallSlot = value; }
+            ZC_IF_SOME(value, outerLiteralIndex) { outerLiteralSlot = value; }
+            const auto& innerInvocation = facts.calls().entries()[innerCallSlot].value.invocation;
+            const auto& outerInvocation = facts.calls().entries()[outerCallSlot].value.invocation;
+            const auto& outerLiteralFact = facts.literals().entries()[outerLiteralSlot].value;
+            const auto innerSelected = innerInvocation.selected.variant();
+            const auto outerSelected = outerInvocation.selected.variant();
+            if (!innerSelected.is<checker::checked::PrimitiveCallable>() ||
+                !outerSelected.is<checker::checked::PrimitiveCallable>() ||
+                innerInvocation.arguments.size() != 2 || outerInvocation.arguments.size() != 2 ||
+                innerInvocation.arguments[0].sourceNode != innerLeft ||
+                innerInvocation.arguments[1].sourceNode != innerRight ||
+                outerInvocation.receiver != zc::none || innerInvocation.receiver != zc::none ||
+                innerInvocation.substitutions != zc::none ||
+                outerInvocation.substitutions != zc::none ||
+                innerInvocation.witnesses != zc::none || outerInvocation.witnesses != zc::none ||
+                innerInvocation.raises != zc::none || outerInvocation.raises != zc::none ||
+                innerInvocation.successType != closureCallable.success ||
+                outerInvocation.successType != closureCallable.success ||
+                innerInvocation.resultType != closureCallable.success ||
+                outerInvocation.resultType != closureCallable.success ||
+                outerLiteralFact.node != outerOtherNode ||
+                outerLiteralFact.type != closureCallable.success) {
+              return zc::none;
+            }
+            const auto innerOperation =
+                innerSelected.get<checker::checked::PrimitiveCallable>().operation;
+            const auto outerOperation =
+                outerSelected.get<checker::checked::PrimitiveCallable>().operation;
+            if (!isScalarArithmeticOperation(innerOperation) ||
+                !isScalarArithmeticOperation(outerOperation)) {
+              return zc::none;
+            }
+            auto buildInnerParameterArm =
+                [&](ast::NodeId leaf, size_t parameterIndex) -> zc::Maybe<PendingConditionalArm> {
+              const auto& published = closureCallable.parameters[parameterIndex];
+              if (published.type != closureCallable.success) { return zc::none; }
+              auto leafSpan = bound.parsedModule().spanFor(closureTree.node(leaf).range);
+              if (leafSpan == zc::none) { return zc::none; }
+              auto reference = HirParameterReferenceExpression{
+                  HirNodeId(), published.parameter.clone(), closureCallable.success,
+                  HirValueCategory::Place, ZC_ASSERT_NONNULL(leafSpan).clone()};
+              return PendingConditionalArm{zc::none,
+                                           zc::mv(reference),
+                                           zc::none,
+                                           closureCallable.success,
+                                           ZC_ASSERT_NONNULL(leafSpan).clone(),
+                                           zc::none,
+                                           leaf};
+            };
+            auto innerLeftArm = buildInnerParameterArm(innerLeft, parameterNestedLeftIndex);
+            auto innerRightArm = buildInnerParameterArm(innerRight, parameterNestedRightIndex);
+            if (innerLeftArm == zc::none || innerRightArm == zc::none) { return zc::none; }
+            auto innerSpan =
+                bound.parsedModule().spanFor(closureTree.node(parameterNestedInnerNode).range);
+            if (innerSpan == zc::none) { return zc::none; }
+            auto innerBinary = PendingConditionalArmBinary{
+                zc::heap<PendingConditionalArm>(zc::mv(ZC_ASSERT_NONNULL(innerLeftArm))),
+                zc::heap<PendingConditionalArm>(zc::mv(ZC_ASSERT_NONNULL(innerRightArm))),
+                closureCallable.success, innerOperation, parameterNestedInnerNode};
+            auto outerLiteralSpan =
+                bound.parsedModule().spanFor(closureTree.node(outerOtherNode).range);
+            if (outerLiteralSpan == zc::none) { return zc::none; }
+            auto nestedArm = PendingConditionalArm{zc::none,
+                                                   zc::none,
+                                                   zc::none,
+                                                   closureCallable.success,
+                                                   ZC_ASSERT_NONNULL(innerSpan).clone(),
+                                                   zc::mv(innerBinary),
+                                                   parameterNestedInnerNode};
+            auto literalArm = PendingConditionalArm{outerLiteralFact.literal.clone(),
+                                                    zc::none,
+                                                    zc::none,
+                                                    closureCallable.success,
+                                                    ZC_ASSERT_NONNULL(outerLiteralSpan).clone(),
+                                                    zc::none,
+                                                    outerOtherNode};
+            return PendingFunctionShape{ComparisonReturn{PendingEqualityCondition{
+                zc::mv(nestedArm), zc::mv(literalArm), closureCallable.success,
+                closureCallable.success, outerOperation, closureValueSpan.clone(), false,
+                parameterNestedOuterNode}}};
           }
           if (parameterArithmetic) {
             // Two declared parameters combined in one arithmetic or

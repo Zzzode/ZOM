@@ -1401,11 +1401,47 @@ zc::Maybe<RecursiveFunctionProduct> buildFreeFunctionBinaryReturn(
     parameterLocals.add(ctx.declareLocal(MirLocalKind::Parameter, parameter.type, scope,
                                          parameter.sourceSpan.clone()));
   }
-  const MirLocalId result = ctx.declareLocal(MirLocalKind::FunctionResult, declaration.resultType,
-                                             scope, sourceReturn.sourceSpan.clone());
 
-  auto left = operandFor(binary.left, parameterLocals.asPtr());
-  auto right = operandFor(binary.right, parameterLocals.asPtr());
+  const MirBlockId entry = ctx.beginBlock(scope);
+  (void)entry;
+
+  // Recursively lower an operand. A scalar literal or parameter resolves to a
+  // constant or place-use directly; a one-level nested binary lowers to a fresh
+  // Temporary local assigned an arithmetic rvalue, and the operand becomes a
+  // place-use of that temporary. Any other operand shape returns none so the
+  // capability stays a drain.
+  auto lowerOperandImpl = [&](auto&& self, hir::HirNodeId operandNode,
+                              identity::SemanticTypeId operandType) -> zc::Maybe<MirOperand> {
+    if (auto nestedBinary = primitiveBinaryFor(hirModule, operandNode); nestedBinary != zc::none) {
+      const auto& nested = ZC_ASSERT_NONNULL(nestedBinary);
+      if (nested.type != operandType) { return zc::none; }
+      auto nestedArithmetic = arithmeticOperatorFor(nested.operation);
+      if (nestedArithmetic == zc::none) { return zc::none; }
+      auto nestedLeft = self(self, nested.left, nested.operandType);
+      auto nestedRight = self(self, nested.right, nested.operandType);
+      if (nestedLeft == zc::none || nestedRight == zc::none) { return zc::none; }
+      const MirLocalId temp =
+          ctx.declareLocal(MirLocalKind::Temporary, nested.type, scope, nested.sourceSpan.clone());
+      ctx.appendStatement(MirStatement::storageLive(temp, nested.sourceSpan.clone()));
+      zc::Vector<MirProjection> tempProjections;
+      ctx.appendStatement(MirStatement::assign(
+          MirPlace(temp, nested.type, zc::mv(tempProjections), nested.type),
+          MirRvalue::arithmetic(ZC_ASSERT_NONNULL(nestedArithmetic),
+                                zc::mv(ZC_ASSERT_NONNULL(nestedLeft)),
+                                zc::mv(ZC_ASSERT_NONNULL(nestedRight)), nested.type),
+          MirInitializationKind::Initialize, nested.sourceSpan.clone()));
+      zc::Vector<MirProjection> useProjections;
+      return placeUse(proofs, copyMarker,
+                      MirPlace(temp, operandType, zc::mv(useProjections), operandType));
+    }
+    return operandFor(operandNode, parameterLocals.asPtr());
+  };
+  auto lowerOperand = [&](hir::HirNodeId operandNode, identity::SemanticTypeId operandType) {
+    return lowerOperandImpl(lowerOperandImpl, operandNode, operandType);
+  };
+
+  auto left = lowerOperand(binary.left, binary.operandType);
+  auto right = lowerOperand(binary.right, binary.operandType);
   if (left == zc::none || right == zc::none) return zc::none;
 
   zc::Maybe<MirRvalue> rvalue;
@@ -1417,8 +1453,11 @@ zc::Maybe<RecursiveFunctionProduct> buildFreeFunctionBinaryReturn(
                                    zc::mv(ZC_ASSERT_NONNULL(right)), binary.type);
   }
 
-  const MirBlockId entry = ctx.beginBlock(scope);
-  (void)entry;
+  // The result local is declared after any nested temporaries so the local order
+  // stays [parameters ..., body temporaries ..., result], which the LIR scalar
+  // body lowering relies on to identify the returned last local.
+  const MirLocalId result = ctx.declareLocal(MirLocalKind::FunctionResult, declaration.resultType,
+                                             scope, sourceReturn.sourceSpan.clone());
   ctx.appendStatement(MirStatement::storageLive(result, sourceReturn.sourceSpan.clone()));
   zc::Vector<MirProjection> destinationProjections;
   ctx.appendStatement(
