@@ -1,0 +1,11 @@
+// RFC 0057 slice 2 nested positive mirror: a non-capturing two-parameter
+// expression-body lambda whose outer arithmetic binary has an integer literal
+// as its left operand and a one-level nested binary over both parameters as
+// its right operand (`1 + (a + b)`), reached through a whole-local copy chain.
+// The nested binary lowers to a body temporary; this needs no experimental
+// capture gate because it captures nothing.
+fn entry() -> i32 {
+  let f = (a: i32, b: i32) -> i32 => 1 + (a + b);
+  let g = f;
+  return g(20, 21);
+}

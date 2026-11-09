@@ -2,4 +2,4 @@ section: "§4 LambdaExpression nested binary expression body"
 covers_rule: "lambdaExpression, lambdaParameterList, lambdaExpressionBody, binaryExpression, identifier, integerLiteral"
 expected: "ACCEPT"
 notes:
-  - "The inner-on-right nested source parses legally; it drains semantically (ZOM4099), never as a grammar rejection or an internal incident."
+  - "RFC 0057 slice 2: the inner-on-right nested-binary expression-body lambda parses and lowers legally; operand ordering is a compiler capability decision, never a grammar one."
