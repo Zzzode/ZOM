@@ -1790,8 +1790,15 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         // references at F+6 and F+7. Validate it as a self-contained tree by
         // node id and skip the fixed-stride record collection below.
         const size_t nestedStride = 8;
-        const HirNodeId innerBinaryId = hirId(expectedFunction + 2);
-        const HirNodeId outerLiteralId = hirId(expectedFunction + 3);
+        // The nested binary and outer literal occupy F+2/F+3 in source order:
+        // nested-first when the inner binary is the outer left operand, and
+        // literal-first when it is the outer right operand. The outer binary
+        // (F+4), return (F+5), and the inner parameter references (F+6/F+7)
+        // keep fixed positions regardless of orientation.
+        const HirNodeId innerBinaryId =
+            hirId(expectedFunction + (parameterNestedInnerOnLeft ? 2 : 3));
+        const HirNodeId outerLiteralId =
+            hirId(expectedFunction + (parameterNestedInnerOnLeft ? 3 : 2));
         const HirNodeId outerBinaryId = hirId(expectedFunction + 4);
         const HirNodeId nestedReturnId = hirId(expectedFunction + 5);
         const HirNodeId innerLeftId = hirId(expectedFunction + 6);
@@ -1867,7 +1874,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         const identity::CallableParameterKey expectedRightKey =
             earlyCallable.parameters[1].parameter.clone();
         const bool treeValid =
-            parameterNestedInnerOnLeft && innerSelected.is<checker::checked::PrimitiveCallable>() &&
+            innerSelected.is<checker::checked::PrimitiveCallable>() &&
             outerSelected.is<checker::checked::PrimitiveCallable>() &&
             isScalarArithmeticOperation(
                 innerSelected.get<checker::checked::PrimitiveCallable>().operation) &&

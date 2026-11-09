@@ -1181,6 +1181,33 @@ ZC_TEST("CompilerSessionTest.TwoParameterNestedBinaryExpressionClosureLowersToHi
   ZC_EXPECT(session->getOwnershipCheckedMirModules()[0].builtMir().functions().size() == 2);
 }
 
+ZC_TEST("CompilerSessionTest.TwoParameterNestedBinaryInnerOnRightClosureLowersToHirAndMir") {
+  // RFC 0057 slice 2 nested mirror: the one-level nested binary over both
+  // parameters is the outer RIGHT operand with the integer literal on the left
+  // (`(a, b) -> i32 => 1 + (a + b)`), reached through a whole-local copy chain.
+  // The HIR stride swaps the F+2/F+3 literal and nested-binary positions while
+  // the inner parameter references stay at F+6/F+7; the MIR and LIR layers are
+  // operand-order independent, so this publishes with zero diagnostics and zero
+  // incidents just like the inner-on-left form.
+  auto session = packageSession(
+      "fn entry() -> i32 { let f = (a: i32, b: i32) -> i32 => 1 + (a + b); "
+      "let g = f; return g(20, 21); }\n"_zc);
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(session->checkSources());
+  ZC_EXPECT(!session->hasDiagnosticErrors());
+  ZC_EXPECT(session->getIncidents().empty());
+  ZC_REQUIRE(session->getVerifiedHirModules().size() == 1);
+  const auto& hir = session->getVerifiedHirModules()[0];
+  ZC_EXPECT(hir.functions().size() == 2);
+  ZC_EXPECT(hir.closureAddresses().size() == 1);
+  ZC_EXPECT(hir.indirectCalls().size() == 1);
+  ZC_EXPECT(hir.primitiveBinaryOperations().size() == 2);
+  ZC_REQUIRE(session->getOwnershipCheckedMirModules().size() == 1);
+  ZC_EXPECT(session->getOwnershipCheckedMirModules()[0].builtMir().functions().size() == 2);
+}
+
 ZC_TEST("CompilerSessionTest.TwoParameterSequentialLocalBlockClosureLowersToHirAndMir") {
   // RFC 0057 slice 2 sequential-local target: a non-capturing two-parameter
   // block-body function-expression closure whose leading let binding computes

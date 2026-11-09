@@ -13980,6 +13980,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       bool parameterNestedClosure = false;
       ast::NodeId parameterNestedOuterNode;
       ast::NodeId parameterNestedInnerNode;
+      // True when the one-level nested binary is the outer binary's left
+      // operand (the right operand is the integer literal); false for the
+      // mirrored literal-left, nested-right form.
+      bool parameterNestedInnerOnLeft = false;
       size_t parameterNestedLeftIndex = 0;
       size_t parameterNestedRightIndex = 0;
       // RFC 0057 slice 2 sequential-local block form: a two-parameter
@@ -14479,19 +14483,19 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                 closureTree.node(binaryLeft).kind == ast::SyntaxKind::IntLiteral;
             const bool rightIsLiteral =
                 closureTree.node(binaryRight).kind == ast::SyntaxKind::IntLiteral;
-            // One-level nested form: the LEFT outer operand is itself a binary
-            // whose two leaves are identifier parameters, and the right outer
-            // operand is an integer literal. The inner operands must not nest
-            // further (depth exactly one). An inner binary on the right has no
-            // admitted HIR stride or MIR/LIR lowering slice, so it keeps the
-            // capability drain through the fallback below.
+            // One-level nested form: exactly one outer operand is itself a
+            // binary whose two leaves are identifier parameters, while the
+            // other outer operand is an integer literal. Either operand order
+            // is admitted; the inner operands must not nest further (depth
+            // exactly one).
             const bool leftIsInnerBinary =
                 closureTree.node(binaryLeft).kind == ast::SyntaxKind::BinaryExpr;
             const bool rightIsInnerBinary =
                 closureTree.node(binaryRight).kind == ast::SyntaxKind::BinaryExpr;
-            if (leftIsInnerBinary && !rightIsInnerBinary && closureParameterCount == 2) {
-              const ast::NodeId innerNode = binaryLeft;
-              const ast::NodeId outerOtherNode = binaryRight;
+            if (leftIsInnerBinary != rightIsInnerBinary && closureParameterCount == 2) {
+              const bool innerOnLeft = leftIsInnerBinary;
+              const ast::NodeId innerNode = innerOnLeft ? binaryLeft : binaryRight;
+              const ast::NodeId outerOtherNode = innerOnLeft ? binaryRight : binaryLeft;
               const ast::NodeId innerLeft(
                   closureTree.node(innerNode).payload.words[ast::kBinaryExprLhsWord]);
               const ast::NodeId innerRight(
@@ -14504,6 +14508,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                   closureTree.node(outerOtherNode).kind == ast::SyntaxKind::IntLiteral;
               if (innerLeavesAreParams && outerOtherIsLiteral) {
                 parameterNestedClosure = true;
+                parameterNestedInnerOnLeft = innerOnLeft;
                 parameterNestedOuterNode = parameterClosureValue;
                 parameterNestedInnerNode = innerNode;
                 parameterBodyLeaves.add(innerLeft);
@@ -15052,7 +15057,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             const ast::NodeId innerRight(
                 closureTree.node(parameterNestedInnerNode).payload.words[ast::kBinaryExprRhsWord]);
             const ast::NodeId outerOtherNode(
-                closureTree.node(parameterNestedOuterNode).payload.words[ast::kBinaryExprRhsWord]);
+                closureTree.node(parameterNestedOuterNode)
+                    .payload.words[parameterNestedInnerOnLeft ? ast::kBinaryExprRhsWord
+                                                              : ast::kBinaryExprLhsWord]);
             auto innerCallIndex = factIndex(facts.calls(), parameterNestedInnerNode);
             auto outerCallIndex = factIndex(facts.calls(), parameterNestedOuterNode);
             auto outerLiteralIndex = factIndex(facts.literals(), outerOtherNode);
@@ -15141,8 +15148,14 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                     ZC_ASSERT_NONNULL(outerLiteralSpan).clone(),
                                                     zc::none,
                                                     outerOtherNode};
+            if (parameterNestedInnerOnLeft) {
+              return PendingFunctionShape{ComparisonReturn{PendingEqualityCondition{
+                  zc::mv(nestedArm), zc::mv(literalArm), closureCallable.success,
+                  closureCallable.success, outerOperation, closureValueSpan.clone(), false,
+                  parameterNestedOuterNode}}};
+            }
             return PendingFunctionShape{ComparisonReturn{PendingEqualityCondition{
-                zc::mv(nestedArm), zc::mv(literalArm), closureCallable.success,
+                zc::mv(literalArm), zc::mv(nestedArm), closureCallable.success,
                 closureCallable.success, outerOperation, closureValueSpan.clone(), false,
                 parameterNestedOuterNode}}};
           }
