@@ -1,0 +1,9 @@
+// RFC 0057 slice 2 nested negative: a closure body whose arithmetic nests two
+// binary operands (depth beyond the one-level inner-binary-plus-literal shape)
+// is outside the nested-arm slice. The owning function keeps one ZOM4099
+// capability diagnostic with zero incidents.
+fn entry() -> i32 {
+  let f = (a: i32, b: i32) -> i32 => (a + b) + (a + 1);
+  let g = f;
+  return g(1, 2);
+}

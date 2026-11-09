@@ -1,0 +1,5 @@
+section: "§4 LambdaExpression nested binary expression body"
+covers_rule: "lambdaExpression, lambdaParameterList, lambdaExpressionBody, binaryExpression, identifier, integerLiteral"
+expected: "ACCEPT"
+notes:
+  - "RFC 0057 slice 2: a nested-binary expression-body lambda parses legally; lowering depth is a compiler capability decision, never a grammar one."

@@ -1,0 +1,11 @@
+// RFC 0057 slice 2 nested: a non-capturing two-parameter expression-body
+// lambda whose outer arithmetic binary combines a one-level nested binary over
+// both parameters with an integer literal. It is reached through a whole-local
+// copy chain and the indirect call passes two literal arguments. The inner
+// binary lowers to a body temporary, and the program exits 42 for
+// (20 + 21) + 1 through the indirect-call ABI.
+fn entry() -> i32 {
+  let f = (a: i32, b: i32) -> i32 => (a + b) + 1;
+  let g = f;
+  return g(20, 21);
+}

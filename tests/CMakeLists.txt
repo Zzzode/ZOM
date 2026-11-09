@@ -579,6 +579,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/one-parameter-unary-closure-consumer/Zom.toml::one_parameter_unary_closure_consumer::one_parameter_unary_closure_consumer::1"
       --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/two-parameter-nested-binary-closure-consumer/Zom.toml::two_parameter_nested_binary_closure_consumer::two_parameter_nested_binary_closure_consumer::42"
+      --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/one-parameter-literal-arithmetic-closure-consumer/Zom.toml::one_parameter_literal_arithmetic_closure_consumer::one_parameter_literal_arithmetic_closure_consumer::42"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/zero-argument-copied-closure-consumer/Zom.toml::zero_argument_copied_closure_consumer::zero_argument_copied_closure_consumer::42"
