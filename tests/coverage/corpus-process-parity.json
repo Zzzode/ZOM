@@ -2599,10 +2599,6 @@
       "exitCode": 1,
       "sha256": "3fc6f74e2060643222135b14593f0b59fa76b1752e31b9243dff1a8978599dbf"
     },
-    "06-declarations/functions/closure-function-definitions/closure_one_parameter_same_operand_body_neg_01.zom": {
-      "exitCode": 1,
-      "sha256": "2fb121b6a01f98ee0b1c911e8a6faa1e6b6f8ce07eb3b8cd1dcc417baa4206fe"
-    },
     "06-declarations/functions/closure-function-definitions/closure_parameter_capability_neg_01.zom": {
       "exitCode": 1,
       "sha256": "32a6557d6d8a8f82fe5f44f24ff348d2f3510ab371fd9b15792c83056902edb5"
@@ -2647,9 +2643,13 @@
       "exitCode": 0,
       "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
-    "06-declarations/functions/closure-function-definitions/one_parameter_repeated_operand_arithmetic_expression_body_neg_01.zom": {
-      "exitCode": 1,
-      "sha256": "ac17b7d3581f61afcdd189897a478e116e925bc5adc5d091b9e001f32cabd7ea"
+    "06-declarations/functions/closure-function-definitions/one_parameter_repeated_operand_arithmetic_expression_body_pos_01.zom": {
+      "exitCode": 0,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    "06-declarations/functions/closure-function-definitions/one_parameter_repeated_operand_block_body_pos_01.zom": {
+      "exitCode": 0,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     "06-declarations/functions/closure-function-definitions/one_parameter_unary_negation_expression_body_pos_01.zom": {
       "exitCode": 0,
