@@ -1,6 +1,6 @@
 {
   "corpusRoot": "tests/conformance/corpus",
-  "count": 1134,
+  "count": 1137,
   "irChannel": true,
   "outputs": {
     "02-lexical/bigint_suffix_neg_01.zom": {
@@ -2785,6 +2785,10 @@
       "mirSha256": "ea6eb931d69086979885ff9bb9a7cdb2cfd5a65e65f18d1f802150448ac60f67",
       "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
+    "06-declarations/functions/closure-function-definitions/closure_second_parameter_literal_arithmetic_expression_body_neg_01.zom": {
+      "exitCode": 1,
+      "sha256": "badc34e525a348a78f908ff0e7712f32cc6029161e42b9c68df5535d3b1e8b6b"
+    },
     "06-declarations/functions/closure-function-definitions/closure_three_parameter_arithmetic_expression_body_neg_01.zom": {
       "exitCode": 1,
       "sha256": "92045c668a1f90210b2331b3ccb5935899f45de27d586478892991014a78849c"
@@ -2893,6 +2897,18 @@
       "exitCode": 0,
       "hirSha256": "9a38ed6f1d49b0b35ceb4e3f42f6b03fb55772711eafdaf49480a56c3ab22e26",
       "mirSha256": "c52853f24be540d671b89d095ce8c3124a7fbe7c77b4f5f86cf85cf246468efa",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    "06-declarations/functions/closure-function-definitions/two_parameter_unused_second_literal_arithmetic_expression_body_pos_01.zom": {
+      "exitCode": 0,
+      "hirSha256": "e963afa3b049af12fbcc94324292d5806632ad323949102967f58ac392b42c25",
+      "mirSha256": "303dfec537da454b40e0de326806721a65562587ed73890fbce8f8920b3810bb",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    "06-declarations/functions/closure-function-definitions/two_parameter_unused_second_literal_block_body_pos_01.zom": {
+      "exitCode": 0,
+      "hirSha256": "33a191bd72517a013143ecb8d6862926ff6489a9607a8a35ed25a818f73bd243",
+      "mirSha256": "f65bbede9d496f325c86f7ffe4c8cdb3a661e6a57ecb20ea4533a16f3d6f1cbf",
       "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     "06-declarations/functions/closure-function-definitions/zero_argument_copied_block_closure_value_pos_01.zom": {
