@@ -1343,17 +1343,22 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           }
         }
       }
-      // RFC 0057 slice 2 one-parameter unary form: a non-capturing closure
-      // with one declared parameter whose sole body value is a primitive unary
-      // operation over that parameter (`(n) -> i32 => -n`). The builder
-      // desugars it to a parameter-plus-synthetic-constant binary, so the
-      // closure occupies the six-node binary stride with one parameter
-      // reference and one synthetic scalar literal that carries no checker
-      // literal fact.
+      // RFC 0057 slice 2 parameter unary form: a non-capturing closure whose
+      // sole body value is a primitive unary operation over the position-zero
+      // declared parameter (`(n) -> i32 => -n`, or `(a, b) -> i32 => -a` with
+      // the second parameter unused). The builder desugars it to a
+      // parameter-plus-synthetic-constant binary, so the closure occupies the
+      // six-node binary stride with one parameter reference and one synthetic
+      // scalar literal that carries no checker literal fact.
       bool parameterUnaryClosure = false;
       bool parameterUnarySyntheticOnLeft = false;
       ast::NodeId parameterUnaryIdentifierNode;
-      if (parameterClosure && closureParameterCount == 1) {
+      // A primitive unary is probed for one declared parameter, or for two
+      // declared parameters where the operand names the position-zero
+      // parameter and the second is unused. The index-zero reconciliation
+      // below rejects an operand naming the second parameter, matching the
+      // builder capability gate.
+      if (parameterClosure && (closureParameterCount == 1 || closureParameterCount == 2)) {
         ast::NodeId parameterUnaryValue;
         if (closureIsFunctionExpression) {
           auto probeShape =

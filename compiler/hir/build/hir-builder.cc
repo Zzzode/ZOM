@@ -13965,11 +13965,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       ast::NodeId parameterLiteralNode;
       ast::NodeId parameterLiteralLeafNode;
       size_t parameterLiteralParameterIndex = 0;
-      // RFC 0057 slice 2 one-parameter unary form: a non-capturing closure
-      // whose sole body value is one primitive unary operation over its one
-      // declared parameter (`(n) -> i32 => -n`). The builder desugars the
-      // unary to a flat parameter-plus-synthetic-constant binary, so the
-      // resulting shape is one parameter-reference arm and one constant arm.
+      // RFC 0057 slice 2 parameter unary form: a non-capturing closure whose
+      // sole body value is one primitive unary operation over the
+      // position-zero declared parameter (`(n) -> i32 => -n`, or
+      // `(a, b) -> i32 => -a` with the second parameter unused). The builder
+      // desugars the unary to a flat parameter-plus-synthetic-constant binary,
+      // so the resulting shape is one parameter-reference arm and one constant
+      // arm.
       bool parameterUnaryClosure = false;
       ast::NodeId parameterUnaryNode;
       ast::NodeId parameterUnaryOperandNode;
@@ -14452,11 +14454,17 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           // The operation legality is reconciled with the checker primitive
           // call fact at arm construction, not from the syntax kind.
           if (closureTree.node(parameterClosureValue).kind == ast::SyntaxKind::UnaryExpression) {
-            // A primitive unary over the sole declared parameter. The operand
-            // must be the one parameter identifier; the operation and its
-            // desugared binary form are reconciled against the checker unary
-            // call fact at shape construction below.
-            if (closureParameterCount != 1) { return rejectClosureCapability(); }
+            // A primitive unary over the position-zero declared parameter. The
+            // operand must be the one parameter identifier; the operation and
+            // its desugared binary form are reconciled against the checker
+            // unary call fact at shape construction below. A two-parameter
+            // closure is admitted when the operand names the position-zero
+            // parameter (the second declared parameter is unused); the
+            // index-zero leaf guard below rejects an operand naming the second
+            // parameter.
+            if (closureParameterCount != 1 && closureParameterCount != 2) {
+              return rejectClosureCapability();
+            }
             const ast::NodeId unaryOperand(closureTree.node(parameterClosureValue)
                                                .payload.words[ast::kUnaryExpressionOperandWord]);
             if (!closureTree.contains(unaryOperand) ||
@@ -14614,6 +14622,15 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               return rejectClosureCapability();
             }
             parameterLiteralParameterIndex = resolvedParameterIndices[0];
+          } else if (parameterUnaryClosure) {
+            // The unary operand must resolve to the position-zero declared
+            // parameter; the arm below hard-codes parameters[0], so an operand
+            // naming the second declared parameter keeps the capability drain
+            // instead of miscompiling against the wrong parameter key.
+            if (parameterBodyLeaves.size() != 1 || resolvedParameterIndices[0] != 0) {
+              return rejectClosureCapability();
+            }
+            returnedClosureParameter = resolvedParameterIndices[0];
           } else if (parameterBodyLeaves.size() == 1) {
             returnedClosureParameter = resolvedParameterIndices[0];
           } else {
