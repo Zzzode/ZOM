@@ -1,0 +1,10 @@
+// A non-capturing two-parameter block-body function-expression closure whose
+// sole return uses only the position-zero parameter plus an integer literal;
+// the second declared parameter is unused. Reached through a whole-local copy
+// chain; the indirect call still passes two source literal arguments. The
+// program exits 21 (20 plus 1).
+fn entry() -> i32 {
+  let f = fn (a: i32, b: i32) -> i32 { return a + 1; };
+  let g = f;
+  return g(20, 21);
+}

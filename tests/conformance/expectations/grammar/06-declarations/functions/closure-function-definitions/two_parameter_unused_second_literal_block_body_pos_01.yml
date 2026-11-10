@@ -1,0 +1,5 @@
+section: "§4 FunctionExpression two-parameter unused-second declared parameter with literal operand"
+covers_rule: "functionExpression, functionParameter, functionBody, returnStatement, binaryExpression, integerLiteral"
+expected: "ACCEPT"
+notes:
+  - "RFC 0057 slice 2: a two-parameter parameter-plus-literal arithmetic block body that uses only the position-zero parameter parses and lowers legally; an unused declared parameter is a compiler capability decision, never a grammar one."

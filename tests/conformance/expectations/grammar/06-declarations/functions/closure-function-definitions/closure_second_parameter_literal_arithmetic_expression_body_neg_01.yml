@@ -1,0 +1,5 @@
+section: "§4 LambdaExpression second-parameter plus literal expression body"
+covers_rule: "lambdaExpression, lambdaParameterList, lambdaExpressionBody, binaryExpression, identifier, integerLiteral"
+expected: "ACCEPT"
+notes:
+  - "The source parses legally; a parameter-plus-literal closure whose identifier names the second declared parameter drains semantically (ZOM4099), never as a grammar rejection. Only the position-zero parameter is admitted with a literal operand."

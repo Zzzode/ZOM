@@ -1,0 +1,5 @@
+section: "§4 LambdaExpression two-parameter unused-second plus literal expression body"
+covers_rule: "lambdaExpression, lambdaParameterList, lambdaExpressionBody, binaryExpression, identifier, integerLiteral"
+expected: "ACCEPT"
+notes:
+  - "RFC 0057 slice 2: a two-parameter arithmetic expression-body lambda that uses only the position-zero parameter with one literal operand parses and lowers legally; an unused declared parameter and the operand lowering are compiler capability decisions, never grammar ones."
