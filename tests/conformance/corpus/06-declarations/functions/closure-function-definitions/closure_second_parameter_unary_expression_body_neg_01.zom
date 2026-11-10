@@ -1,0 +1,9 @@
+// RFC 0057 slice 2 negative: a two-parameter unary closure is admitted only
+// when the operand names the parameter at ordinary position zero. Naming the
+// second declared parameter (`-b`) keeps the owning function on one ZOM4099
+// capability diagnostic with zero incidents.
+fn entry() -> i32 {
+  let f = (a: i32, b: i32) -> i32 => -b;
+  let g = f;
+  return g(20, 21);
+}

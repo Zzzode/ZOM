@@ -1,0 +1,11 @@
+// RFC 0057 slice 2 positive: a non-capturing two-parameter expression-body
+// lambda whose sole expression is one integer unary operation over the
+// position-zero parameter. The second declared parameter is unused, reached
+// through a whole-local copy chain. The unary desugars to a
+// parameter-plus-synthetic-constant binary; this needs no experimental
+// capture gate because it captures nothing.
+fn entry() -> i32 {
+  let f = (a: i32, b: i32) -> i32 => -a;
+  let g = f;
+  return g(20, 21);
+}

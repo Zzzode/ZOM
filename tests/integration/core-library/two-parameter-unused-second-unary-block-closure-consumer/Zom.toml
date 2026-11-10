@@ -1,0 +1,8 @@
+[package]
+name = "two_parameter_unused_second_unary_block_closure_consumer"
+version = "0.1.0"
+edition = "2026"
+
+[[bin]]
+name = "two_parameter_unused_second_unary_block_closure_consumer"
+path = "src/main.zom"
