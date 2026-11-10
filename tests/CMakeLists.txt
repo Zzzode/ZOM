@@ -599,6 +599,10 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/two-parameter-unused-second-literal-block-closure-consumer/Zom.toml::two_parameter_unused_second_literal_block_closure_consumer::two_parameter_unused_second_literal_block_closure_consumer::21"
       --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/two-parameter-second-position-literal-closure-consumer/Zom.toml::two_parameter_second_position_literal_closure_consumer::two_parameter_second_position_literal_closure_consumer::22"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/two-parameter-second-position-literal-block-closure-consumer/Zom.toml::two_parameter_second_position_literal_block_closure_consumer::two_parameter_second_position_literal_block_closure_consumer::22"
+      --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/two-parameter-unused-second-unary-closure-consumer/Zom.toml::two_parameter_unused_second_unary_closure_consumer::two_parameter_unused_second_unary_closure_consumer::236"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/two-parameter-unused-second-unary-block-closure-consumer/Zom.toml::two_parameter_unused_second_unary_block_closure_consumer::two_parameter_unused_second_unary_block_closure_consumer::236"

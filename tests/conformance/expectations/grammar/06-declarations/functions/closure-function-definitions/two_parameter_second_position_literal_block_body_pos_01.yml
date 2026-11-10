@@ -1,0 +1,5 @@
+section: "§4 FunctionExpression second-position declared parameter with literal operand"
+covers_rule: "functionExpression, functionParameter, functionBody, returnStatement, binaryExpression, integerLiteral"
+expected: "ACCEPT"
+notes:
+  - "RFC 0057 slice 2: a two-parameter parameter-plus-literal block body that uses the position-one parameter parses and lowers legally; which declared parameter the identifier names is a compiler capability decision, never a grammar one."

@@ -1,0 +1,5 @@
+section: "§4 LambdaExpression three-parameter plus literal expression body"
+covers_rule: "lambdaExpression, lambdaParameterList, lambdaExpressionBody, binaryExpression, identifier, integerLiteral"
+expected: "ACCEPT"
+notes:
+  - "The source parses legally; a three-parameter parameter-plus-literal closure drains semantically (ZOM4099) because the scalar closure ladder admits at most two declared parameters, never as a grammar rejection."

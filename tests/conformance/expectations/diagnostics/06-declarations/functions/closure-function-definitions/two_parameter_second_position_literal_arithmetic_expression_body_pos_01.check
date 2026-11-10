@@ -1,0 +1,10 @@
+// RUN: cd %corpus && %zomc compile --check 06-declarations/functions/closure-function-definitions/two_parameter_second_position_literal_arithmetic_expression_body_pos_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// RFC 0057 slice 2 positive: a non-capturing two-parameter expression-body
+// lambda whose parameter-plus-literal body names the position-one parameter,
+// with the first parameter unused, lowers through the full
+// checker/HIR/MIR/LIR pipeline with no capture gate. The compiler exits 0 and
+// emits no diagnostic.
+
+// CHECK-NOT: Error

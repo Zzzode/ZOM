@@ -1,9 +1,0 @@
-// RFC 0057 slice 2 negative: a two-parameter parameter-plus-literal closure
-// is admitted only when the identifier names the parameter at ordinary
-// position zero. Naming the second declared parameter (`b + 1`) keeps the
-// owning function on one ZOM4099 capability diagnostic with zero incidents.
-fn entry() -> i32 {
-  let f = (a: i32, b: i32) -> i32 => b + 1;
-  let g = f;
-  return g(20, 21);
-}
