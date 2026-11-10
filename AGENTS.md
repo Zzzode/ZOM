@@ -67,10 +67,19 @@ Project-wide guidance for AI coding agents working on the ZOM language repositor
     - A background run and a concurrent rebuild corrupt each other: every test
       binary replaced mid-run makes that run's results unusable. Rebuild first,
       then start the tests, and do not touch the build tree until they finish.
+    - Engineering efficiency is a gated, first-class metric. Match gate strength
+      to blast radius (HIR-only slices use light per-slice gates and share one
+      full ctest/parity at a batch boundary; cross-layer changes keep the full
+      gate every time), enumerate a rail's full blast radius before any
+      expensive run, and run the mandatory efficiency retro after every
+      milestone. Full rules and the evidence case log:
+      [`docs/dev/engineering-efficiency.md`](docs/dev/engineering-efficiency.md).
 
-Additional path-scoped rules live in `.codex/rules/*.md`. Skills loadable via
-`/skill` live in `.codex/skills/*/SKILL.md`. Subagent gate specs live in
-`.codex/subagents/` (manifest at `.codex/subagents/manifest.yaml`).
+Tool-specific auto-loaded rules live in `.codex/rules/*.md` (Codex) and
+`.codex/skills/*/SKILL.md`; subagent gate specs live in `.codex/subagents/`
+(manifest at `.codex/subagents/manifest.yaml`). Agent-neutral, path-indexed
+project guidance that every agent must read regardless of tooling lives under
+[`docs/`](docs/) — notably the engineering-efficiency and design docs there.
 
 ---
 
