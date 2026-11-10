@@ -1,0 +1,5 @@
+section: "§4 LambdaExpression expression body"
+covers_rule: "lambdaExpression, lambdaParameterList, lambdaExpressionBody, binaryExpression"
+expected: "ACCEPT"
+notes:
+  - "RFC 0057 slice 2: a repeated-operand relational expression body parses and lowers legally; allowing the same parameter twice is a compiler capability decision, never a grammar one."

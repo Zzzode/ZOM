@@ -1,0 +1,5 @@
+section: "§4 LambdaExpression nested arithmetic body"
+covers_rule: "lambdaExpression, lambdaParameterList, lambdaExpressionBody, binaryExpression, identifier"
+expected: "ACCEPT"
+notes:
+  - "RFC 0057 slice 2: a repeated-operand binary expression body parses legally; allowing the same parameter twice is a compiler capability decision, never a grammar one."

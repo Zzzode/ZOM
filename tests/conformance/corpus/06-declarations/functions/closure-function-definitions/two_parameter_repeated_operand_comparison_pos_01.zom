@@ -1,0 +1,10 @@
+// RFC 0057 slice 2 repeated-operand positive: a non-capturing two-parameter
+// relational lambda whose comparison names the same declared parameter on both
+// sides (`a < a`), reached through a whole-local copy chain. Both HIR parameter
+// references carry one key and the comparison reads that parameter twice; it
+// evaluates to false and needs no capture gate because it captures nothing.
+fn entry() -> bool {
+  let f = (a: i32, b: i32) -> bool => a < a;
+  let g = f;
+  return g(20, 2);
+}
