@@ -587,6 +587,10 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/two-parameter-repeated-operand-comparison-closure-consumer/Zom.toml::two_parameter_repeated_operand_comparison_closure_consumer::two_parameter_repeated_operand_comparison_closure_consumer::0"
       --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/one-parameter-repeated-operand-closure-consumer/Zom.toml::one_parameter_repeated_operand_closure_consumer::one_parameter_repeated_operand_closure_consumer::84"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/one-parameter-repeated-operand-block-closure-consumer/Zom.toml::one_parameter_repeated_operand_block_closure_consumer::one_parameter_repeated_operand_block_closure_consumer::82"
+      --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/two-parameter-sequential-local-block-closure-consumer/Zom.toml::two_parameter_sequential_local_block_closure_consumer::two_parameter_sequential_local_block_closure_consumer::42"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/one-parameter-literal-arithmetic-closure-consumer/Zom.toml::one_parameter_literal_arithmetic_closure_consumer::one_parameter_literal_arithmetic_closure_consumer::42"

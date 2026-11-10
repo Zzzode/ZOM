@@ -1,0 +1,10 @@
+// RFC 0057 slice 2 one-parameter repeated-operand positive (block spelling): a
+// non-capturing one-parameter block-body function-expression closure whose
+// binary names its sole declared parameter twice (`return n + n`), reached
+// through a whole-local copy chain. Both HIR parameter references carry the
+// single published key and MIR reads that one parameter local twice.
+fn entry() -> i32 {
+  let f = fn (n: i32) -> i32 { return n + n; };
+  let g = f;
+  return g(41);
+}

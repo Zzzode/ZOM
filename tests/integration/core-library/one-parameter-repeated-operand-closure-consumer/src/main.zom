@@ -1,0 +1,9 @@
+// RFC 0057 slice 2 one-parameter repeated-operand: a non-capturing
+// one-parameter expression-body lambda whose binary names its sole parameter
+// twice. It is reached through a whole-local copy chain and exits 84 for
+// 42 + 42 through the indirect-call ABI.
+fn entry() -> i32 {
+  let f = (n: i32) -> i32 => n + n;
+  let g = f;
+  return g(42);
+}

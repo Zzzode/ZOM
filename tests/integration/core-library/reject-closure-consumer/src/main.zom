@@ -1,10 +1,11 @@
-// Fail-closed fixture: a one-parameter closure whose arithmetic binary names
-// the sole declared parameter twice matches no admitted closure body (a
-// parameter binary needs two distinct declared parameters; the
-// parameter-plus-literal form needs one literal operand). Object emission
-// rejects the owning function with ZOM4099 instead of publishing an object.
+// Fail-closed fixture: a three-parameter closure whose arithmetic binary
+// repeats one declared parameter exceeds the admitted closure parameter
+// count (only one- and two-parameter closure bodies lower today). Object
+// emission rejects the owning function with ZOM4099 instead of publishing
+// an object; the three-parameter closure carrier is a protected
+// shared-lowering area that has no HIR-only admission path.
 fn entry() -> i32 {
-    let f = (x: i32) -> i32 => x + x;
+    let f = (a: i32, b: i32, c: i32) -> i32 => a + a;
     let g = f;
-    return g(41);
+    return g(41, 42, 43);
 }

@@ -2,4 +2,4 @@ section: "§4 FunctionExpression repeated one-parameter operand"
 covers_rule: "functionExpression, functionParameter, functionBody, returnStatement, binaryExpression, identifier"
 expected: "ACCEPT"
 notes:
-  - "The source parses legally; the repeated one-parameter operand drains semantically (ZOM4099), never as a grammar rejection."
+  - "RFC 0057 slice 2: a one-parameter repeated-operand block body parses and lowers legally; reading the sole parameter twice is a compiler capability decision, never a grammar one."

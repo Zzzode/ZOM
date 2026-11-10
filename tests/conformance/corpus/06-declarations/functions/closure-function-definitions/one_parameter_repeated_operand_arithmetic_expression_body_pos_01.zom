@@ -1,0 +1,10 @@
+// RFC 0057 slice 2 one-parameter repeated-operand positive: a non-capturing
+// one-parameter expression-body lambda whose arithmetic binary names its sole
+// declared parameter twice (`n + n`), reached through a whole-local copy chain.
+// Both HIR parameter references carry the single published key and MIR reads
+// that one parameter local twice; no capture gate is needed.
+fn entry() -> i32 {
+  let f = (n: i32) -> i32 => n + n;
+  let g = f;
+  return g(41);
+}
