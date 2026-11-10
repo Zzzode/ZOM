@@ -14622,13 +14622,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             if (parameterBodyLeaves.size() != 1) { return rejectClosureCapability(); }
             parameterLiteralParameterIndex = resolvedParameterIndices[0];
           } else if (parameterUnaryClosure) {
-            // The unary operand must resolve to the position-zero declared
-            // parameter; the arm below hard-codes parameters[0], so an operand
-            // naming the second declared parameter keeps the capability drain
-            // instead of miscompiling against the wrong parameter key.
-            if (parameterBodyLeaves.size() != 1 || resolvedParameterIndices[0] != 0) {
-              return rejectClosureCapability();
-            }
+            // The sole unary operand resolves to one declared parameter
+            // (position zero or one); the arm below indexes the published
+            // parameter by this resolved index.
+            if (parameterBodyLeaves.size() != 1) { return rejectClosureCapability(); }
             returnedClosureParameter = resolvedParameterIndices[0];
           } else if (parameterBodyLeaves.size() == 1) {
             returnedClosureParameter = resolvedParameterIndices[0];
@@ -15053,7 +15050,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             }
             auto unaryDesugar = desugarPrimitiveUnary(unaryOperation, ZC_ASSERT_NONNULL(unaryKind));
             if (unaryDesugar == zc::none) { return zc::none; }
-            const auto& publishedParameter = closureCallable.parameters[0];
+            const auto& publishedParameter = closureCallable.parameters[returnedClosureParameter];
             if (publishedParameter.type != closureCallable.success) { return zc::none; }
             auto operandSpan =
                 bound.parsedModule().spanFor(closureTree.node(parameterUnaryOperandNode).range);

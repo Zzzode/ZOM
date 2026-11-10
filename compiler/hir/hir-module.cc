@@ -2370,12 +2370,12 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           }
         }
         if (closureSourceValueValid && parameterUnaryClosure) {
-          // The unary operand must materialize to the one declared parameter at
-          // ordinary position zero.
+          // The unary operand must materialize to one declared parameter (at
+          // ordinary position zero or one); the record reconciliation below
+          // keys on the resolved parameter.
           size_t leafIndex = 0;
           if (!namesOneDeclaredParameter(parameterUnaryIdentifierNode,
-                                         ast::kFunctionExpressionParamsIdWord, leafIndex) ||
-              leafIndex != 0) {
+                                         ast::kFunctionExpressionParamsIdWord, leafIndex)) {
             closureSourceValueValid = false;
           }
         }
@@ -2463,13 +2463,13 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                               index + 1);
         }
         if (parameterUnaryClosure) {
-          // The unary operand must name the sole declared parameter at ordinary
-          // position zero.
+          // The unary operand must name a declared parameter (at ordinary
+          // position zero or one); the record reconciliation below keys on the
+          // resolved parameter.
           size_t lambdaUnaryParameterIndex = 0;
           if (!namesOneDeclaredParameter(parameterUnaryIdentifierNode,
                                          ast::kLambdaExpressionParamsIdWord,
-                                         lambdaUnaryParameterIndex) ||
-              lambdaUnaryParameterIndex != 0) {
+                                         lambdaUnaryParameterIndex)) {
             return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                 ir::IrFailureKind::InvalidFact, module, registries,
                                                 index + 1);
@@ -2744,8 +2744,18 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                       : ZC_ASSERT_NONNULL(closureLeftParamRef);
         auto operandSpan =
             bound.parsedModule().spanFor(closureTree.node(parameterUnaryIdentifierNode).range);
+        const uint32_t unaryParameterListWord = closureIsFunctionExpression
+                                                    ? ast::kFunctionExpressionParamsIdWord
+                                                    : ast::kLambdaExpressionParamsIdWord;
+        size_t unaryOperandIndex = 0;
+        if (!namesOneDeclaredParameter(parameterUnaryIdentifierNode, unaryParameterListWord,
+                                       unaryOperandIndex)) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
         const identity::CallableParameterKey expectedDeclaredKey =
-            earlyCallable.parameters[0].parameter.clone();
+            earlyCallable.parameters[unaryOperandIndex].parameter.clone();
         auto unaryCallIndex = factIndex(facts.calls(), closureValue);
         if (operandSpan == zc::none || unaryCallIndex == zc::none) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
