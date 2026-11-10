@@ -1,0 +1,5 @@
+section: "§4 FunctionExpression second-position unary block body"
+covers_rule: "functionExpression, functionParameter, functionBody, returnStatement, unaryExpression"
+expected: "ACCEPT"
+notes:
+  - "RFC 0057 slice 2: a two-parameter unary block body that uses the position-one parameter parses and lowers legally; which declared parameter the operand names is a compiler capability decision, never a grammar one."

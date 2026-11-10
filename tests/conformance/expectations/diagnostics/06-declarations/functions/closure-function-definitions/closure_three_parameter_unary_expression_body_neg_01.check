@@ -1,4 +1,4 @@
-// RUN: cd %corpus && ! %zomc compile --check 06-declarations/functions/closure-function-definitions/closure_second_parameter_unary_expression_body_neg_01.zom > %t 2>&1
+// RUN: cd %corpus && ! %zomc compile --check 06-declarations/functions/closure-function-definitions/closure_three_parameter_unary_expression_body_neg_01.zom > %t 2>&1
 // RUN: %FileCheck %s --input-file %t
 
 // The owning function keeps one capability diagnostic and never reports an

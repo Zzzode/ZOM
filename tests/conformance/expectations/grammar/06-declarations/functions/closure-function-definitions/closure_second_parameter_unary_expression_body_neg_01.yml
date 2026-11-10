@@ -1,5 +1,0 @@
-section: "§4 LambdaExpression second-parameter unary expression body"
-covers_rule: "lambdaExpression, lambdaParameterList, lambdaExpressionBody, unaryExpression, identifier"
-expected: "ACCEPT"
-notes:
-  - "The source parses legally; a unary closure whose operand names the second declared parameter drains semantically (ZOM4099), never as a grammar rejection. Only the position-zero parameter is admitted as the unary operand."

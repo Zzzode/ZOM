@@ -607,6 +607,10 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/two-parameter-unused-second-unary-block-closure-consumer/Zom.toml::two_parameter_unused_second_unary_block_closure_consumer::two_parameter_unused_second_unary_block_closure_consumer::236"
       --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/two-parameter-second-position-unary-closure-consumer/Zom.toml::two_parameter_second_position_unary_closure_consumer::two_parameter_second_position_unary_closure_consumer::235"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/two-parameter-second-position-unary-block-closure-consumer/Zom.toml::two_parameter_second_position_unary_block_closure_consumer::two_parameter_second_position_unary_block_closure_consumer::235"
+      --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/zero-argument-copied-closure-consumer/Zom.toml::zero_argument_copied_closure_consumer::zero_argument_copied_closure_consumer::42"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/two-captured-expression-body-closure-consumer/Zom.toml::two_captured_expression_body_closure_consumer::two_captured_expression_body_closure_consumer::42::--experimental-captures"

@@ -1,0 +1,5 @@
+section: "§4 LambdaExpression three-parameter unary expression body"
+covers_rule: "lambdaExpression, lambdaParameterList, lambdaExpressionBody, unaryExpression, identifier"
+expected: "ACCEPT"
+notes:
+  - "The source parses legally; a three-parameter unary closure drains semantically (ZOM4099) because the scalar closure ladder admits at most two declared parameters, never as a grammar rejection."

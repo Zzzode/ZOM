@@ -1,0 +1,10 @@
+// A non-capturing two-parameter expression-body lambda whose unary body names
+// the position-one parameter; the first declared parameter is unused. Reached
+// through a whole-local copy chain; the indirect call still passes two source
+// literal arguments. The unary desugars to 0 - b, so the program exits 235 (the
+// low byte of -21 for b = 21).
+fn entry() -> i32 {
+  let f = (a: i32, b: i32) -> i32 => -b;
+  let g = f;
+  return g(20, 21);
+}

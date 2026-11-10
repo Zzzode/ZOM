@@ -1,0 +1,9 @@
+// RFC 0057 slice 2 negative: the scalar closure parameter ladder admits at
+// most two declared parameters. A three-parameter unary closure, even when
+// the operand names an inner parameter, keeps the owning function on one
+// ZOM4099 capability diagnostic with zero incidents.
+fn entry() -> i32 {
+  let f = (a: i32, b: i32, c: i32) -> i32 => -b;
+  let g = f;
+  return g(20, 21, 22);
+}

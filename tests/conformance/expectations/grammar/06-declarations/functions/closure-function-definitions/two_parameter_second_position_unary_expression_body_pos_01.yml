@@ -1,0 +1,5 @@
+section: "§4 LambdaExpression second-position unary expression body"
+covers_rule: "lambdaExpression, lambdaParameterList, lambdaExpressionBody, unaryExpression, identifier"
+expected: "ACCEPT"
+notes:
+  - "RFC 0057 slice 2: a two-parameter unary expression-body lambda that uses the position-one parameter (the first parameter unused) parses and lowers legally; which declared parameter the operand names is a compiler capability decision, never a grammar one."
