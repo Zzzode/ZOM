@@ -2809,14 +2809,6 @@
       "exitCode": 1,
       "sha256": "31415a8d3d7508ea3eae7917a7b9ac1bdc1bd1adad32307d0d3c6b95203d9dd7"
     },
-    "06-declarations/functions/closure-function-definitions/closure_two_parameter_same_operand_arithmetic_neg_01.zom": {
-      "exitCode": 1,
-      "sha256": "52faf3efb775a9b842b275b621b2e225da1274a0c4791f4d9dbde4cb4410b763"
-    },
-    "06-declarations/functions/closure-function-definitions/closure_two_parameter_same_operand_comparison_neg_01.zom": {
-      "exitCode": 1,
-      "sha256": "8961f4021f3b1ed22b24ebb4318c8f5feeaf6d2f1ff56c7c4dfeab6c776f1459"
-    },
     "06-declarations/functions/closure-function-definitions/closure_two_scalar_capture_pos_01.zom": {
       "exitCode": 1,
       "sha256": "df112dbf8c54c2a4d1172aaee4e27ec7c6ec3b15376ec77942db6cf34e2df0d8"
@@ -2879,6 +2871,18 @@
       "exitCode": 0,
       "hirSha256": "891d0317e66ec938a003c04405e1b332d1306625a36337c10294a8f7245cc777",
       "mirSha256": "a5d555a671c1d7827d72479f6b918b16179897d4f647c5d932744b988b764c0b",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    "06-declarations/functions/closure-function-definitions/two_parameter_repeated_operand_closure_pos_01.zom": {
+      "exitCode": 0,
+      "hirSha256": "d0ea512774ab65c3c4423fe74f9b3b4cce40560bb7d90a669aee1b7fba9671ce",
+      "mirSha256": "5e9a0f67f17b8e7b63fe7d1b72f0ebc5c89ae598f14cda5fdc7cad588d0cd2e7",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    "06-declarations/functions/closure-function-definitions/two_parameter_repeated_operand_comparison_pos_01.zom": {
+      "exitCode": 0,
+      "hirSha256": "d1bcee6a8bdc831dbf72ff02066f1d71c0d4946de7e18466b31ce41f916e5e74",
+      "mirSha256": "578558a9e508aba86a029fd34bff2e31dd9f2d1674e0a1f46562626832a403c3",
       "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     "06-declarations/functions/closure-function-definitions/two_parameter_sequential_local_block_closure_pos_01.zom": {
