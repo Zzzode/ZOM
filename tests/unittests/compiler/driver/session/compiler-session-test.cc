@@ -1253,6 +1253,61 @@ ZC_TEST("CompilerSessionTest.ThreeStatementSequentialBlockClosureKeepsCapability
   ZC_EXPECT(session->getIncidents().empty());
 }
 
+ZC_TEST("CompilerSessionTest.TwoParameterRepeatedOperandClosureLowersToHirAndMir") {
+  // RFC 0057 slice 2 repeated-operand arithmetic: a non-capturing two-parameter
+  // closure whose binary names the same declared parameter on both sides
+  // (`(a, b) -> i32 => a + a`), reached through a whole-local copy chain. The
+  // two HIR parameter references carry the same content-addressed key; MIR
+  // lowers both to a place-use of the one parameter local, so the arithmetic
+  // rvalue simply reads that local twice. HIR and MIR publish with zero
+  // diagnostics and zero incidents.
+  auto session = packageSession(
+      "fn entry() -> i32 { let f = (a: i32, b: i32) -> i32 => a + a; "
+      "let g = f; return g(20, 21); }\n"_zc);
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(session->checkSources());
+  ZC_EXPECT(!session->hasDiagnosticErrors());
+  ZC_EXPECT(session->getIncidents().empty());
+  ZC_REQUIRE(session->getVerifiedHirModules().size() == 1);
+  const auto& hir = session->getVerifiedHirModules()[0];
+  ZC_EXPECT(hir.functions().size() == 2);
+  ZC_EXPECT(hir.closureAddresses().size() == 1);
+  ZC_EXPECT(hir.indirectCalls().size() == 1);
+  ZC_EXPECT(hir.primitiveBinaryOperations().size() == 1);
+  ZC_REQUIRE(hir.parameterReferences().size() == 2);
+  ZC_EXPECT(hir.parameterReferences()[0].parameter == hir.parameterReferences()[1].parameter);
+  ZC_REQUIRE(session->getOwnershipCheckedMirModules().size() == 1);
+  ZC_EXPECT(session->getOwnershipCheckedMirModules()[0].builtMir().functions().size() == 2);
+}
+
+ZC_TEST("CompilerSessionTest.TwoParameterRepeatedOperandComparisonClosureLowersToHirAndMir") {
+  // RFC 0057 slice 2 repeated-operand relational: a non-capturing two-parameter
+  // closure whose comparison names the same parameter on both sides
+  // (`(a, b) -> bool => a < a`). The two HIR parameter references share one key
+  // and the comparison reads that parameter twice, evaluating to false. HIR and
+  // MIR publish with zero diagnostics and zero incidents.
+  auto session = packageSession(
+      "fn entry() -> bool { let f = (a: i32, b: i32) -> bool => a < a; "
+      "let g = f; return g(20, 2); }\n"_zc);
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(session->checkSources());
+  ZC_EXPECT(!session->hasDiagnosticErrors());
+  ZC_EXPECT(session->getIncidents().empty());
+  ZC_REQUIRE(session->getVerifiedHirModules().size() == 1);
+  const auto& hir = session->getVerifiedHirModules()[0];
+  ZC_EXPECT(hir.functions().size() == 2);
+  ZC_EXPECT(hir.closureAddresses().size() == 1);
+  ZC_EXPECT(hir.indirectCalls().size() == 1);
+  ZC_REQUIRE(hir.parameterReferences().size() == 2);
+  ZC_EXPECT(hir.parameterReferences()[0].parameter == hir.parameterReferences()[1].parameter);
+  ZC_REQUIRE(session->getOwnershipCheckedMirModules().size() == 1);
+  ZC_EXPECT(session->getOwnershipCheckedMirModules()[0].builtMir().functions().size() == 2);
+}
+
 ZC_TEST("CompilerSessionTest.TwoParameterComparisonClosureLowersToHirAndMir") {
   // RFC 0057 slice 2: a non-capturing two-parameter closure whose body is one
   // relational comparison over both declared i32 parameters, yielding bool

@@ -14568,9 +14568,11 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             if (resolvedIndex == zc::none) { return rejectClosureCapability(); }
             size_t leafIndex = 0;
             ZC_IF_SOME(value, resolvedIndex) { leafIndex = value; }
-            for (const auto existing : resolvedParameterIndices) {
-              if (existing == leafIndex) { return rejectClosureCapability(); }
-            }
+            // The flat two-parameter arithmetic binary admits a repeated
+            // operand: both leaves may resolve to the same declared parameter,
+            // in which case MIR reads that one parameter local twice. The
+            // nested-closure branch below still requires two distinct leaves
+            // and rejects a repeat on its own.
             resolvedParameterIndices.add(leafIndex);
           }
           if (resolvedParameterIndices.size() != parameterBodyLeaves.size()) {

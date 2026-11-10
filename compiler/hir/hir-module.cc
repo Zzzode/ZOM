@@ -2368,17 +2368,16 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           }
         }
         if (closureSourceValueValid && parameterArithmeticClosure) {
-          // Both binary operands must materialize to two distinct declared
-          // parameters of this block-body function expression.
+          // Both binary operands must materialize to declared parameters of
+          // this block-body function expression. A repeated operand is valid:
+          // the two leaves may name the same parameter, so only the
+          // declared-parameter resolution is enforced here, not distinctness.
           zc::Vector<size_t> parameterIndices;
           for (const ast::NodeId leaf : sourceLeafNodes) {
             size_t leafIndex = 0;
             if (!namesOneDeclaredParameter(leaf, ast::kFunctionExpressionParamsIdWord, leafIndex)) {
               closureSourceValueValid = false;
               break;
-            }
-            for (const auto existing : parameterIndices) {
-              if (existing == leafIndex) { closureSourceValueValid = false; }
             }
             parameterIndices.add(leafIndex);
           }
@@ -2482,17 +2481,12 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           zc::Vector<size_t> lambdaParameterIndices;
           for (const ast::NodeId leaf : {lambdaLeft, lambdaRight}) {
             size_t leafIndex = 0;
+            // A repeated operand names the same parameter on both sides, so
+            // only declared-parameter resolution is required, not distinctness.
             if (!namesOneDeclaredParameter(leaf, ast::kLambdaExpressionParamsIdWord, leafIndex)) {
               return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                   ir::IrFailureKind::InvalidFact, module,
                                                   registries, index + 1);
-            }
-            for (const auto existing : lambdaParameterIndices) {
-              if (existing == leafIndex) {
-                return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
-                                                    ir::IrFailureKind::InvalidFact, module,
-                                                    registries, index + 1);
-              }
             }
             lambdaParameterIndices.add(leafIndex);
           }
