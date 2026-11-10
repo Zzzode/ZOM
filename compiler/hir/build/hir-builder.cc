@@ -13951,11 +13951,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       bool parameterArithmetic = false;
       size_t parameterArithmeticLeftIndex = 0;
       size_t parameterArithmeticRightIndex = 0;
-      // RFC 0057 slice 2 one-parameter-plus-literal form: a non-capturing
-      // closure with one declared parameter whose sole body value is one
-      // integer arithmetic binary combining that parameter with one integer
-      // literal operand. When set, parameterLiteralLeafNode names the
-      // identifier operand (resolved to the one declared parameter) and
+      // RFC 0057 slice 2 parameter-plus-literal form: a non-capturing closure
+      // whose sole body value is one integer arithmetic binary combining one
+      // identifier operand with one integer literal operand. The closure
+      // declares one parameter, or two parameters where only the position-zero
+      // parameter is named by the identifier and the second parameter is
+      // unused. When set, parameterLiteralLeafNode names the identifier
+      // operand (resolved to the position-zero parameter) and
       // parameterLiteralNode names the constant operand; the closure body
       // lowers to a parameter-binary ComparisonReturn with one published-
       // parameter arm and one constant arm.
@@ -14439,13 +14441,16 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         if (!parameterSequentialClosure) {
           // Split the body value into one identifier leaf or the operands of an
           // arithmetic binary. A bare parameter identifier return is admitted
-          // for one or two declared parameters. A binary body is admitted for two
-          // declared parameters (two identifier operands), or for one declared
-          // parameter combined with one integer literal operand. A one-parameter
-          // binary over two references, a repeated operand, and any other operand
-          // shape keep the capability drain. The operation legality is reconciled
-          // with the checker primitive call fact at arm construction, not from
-          // the syntax kind.
+          // for one or two declared parameters. A two-identifier binary is
+          // admitted for one parameter (the sole parameter repeated) or two
+          // parameters (two distinct or repeated parameters). A
+          // parameter-plus-literal binary is admitted for one parameter, or
+          // for two parameters whose identifier names the position-zero
+          // parameter (the second parameter is unused); an identifier naming
+          // the second parameter, a two-literal binary, three or more
+          // parameters, and any other operand shape keep the capability drain.
+          // The operation legality is reconciled with the checker primitive
+          // call fact at arm construction, not from the syntax kind.
           if (closureTree.node(parameterClosureValue).kind == ast::SyntaxKind::UnaryExpression) {
             // A primitive unary over the sole declared parameter. The operand
             // must be the one parameter identifier; the operation and its
@@ -14526,8 +14531,14 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               }
               parameterBodyLeaves.add(binaryLeft);
               parameterBodyLeaves.add(binaryRight);
-            } else if (closureParameterCount == 1 &&
+            } else if ((closureParameterCount == 1 || closureParameterCount == 2) &&
                        ((leftIsIdent && rightIsLiteral) || (leftIsLiteral && rightIsIdent))) {
+              // A parameter-plus-literal binary is admitted for a one-parameter
+              // closure, or for a two-parameter closure whose identifier names
+              // the parameter at ordinary position zero (the second declared
+              // parameter is unused). The index-zero requirement is enforced
+              // below when the sole leaf is resolved; an identifier naming the
+              // second parameter keeps the capability drain.
               parameterLiteralArithmetic = true;
               parameterLiteralNode = leftIsLiteral ? binaryLeft : binaryRight;
               parameterLiteralLeafNode = leftIsIdent ? binaryLeft : binaryRight;

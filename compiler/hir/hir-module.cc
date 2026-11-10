@@ -1288,18 +1288,25 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           }
         }
       }
-      // RFC 0057 slice 2 one-parameter-plus-literal form: a non-capturing
-      // closure with one declared parameter whose sole body value is one
-      // arithmetic binary with one identifier operand and one integer literal
-      // operand. The identifier is reconciled to the one declared parameter
-      // and the literal becomes a constant HIR operand; the closure occupies
-      // the binary six-node stride carrying one published-parameter reference
-      // and one scalar literal.
+      // RFC 0057 slice 2 parameter-plus-literal form: a non-capturing closure
+      // whose sole body value is one arithmetic binary with one identifier
+      // operand and one integer literal operand. The closure declares one
+      // parameter, or two parameters where only the position-zero parameter is
+      // named by the identifier and the second parameter is unused. The
+      // identifier is reconciled to that position-zero parameter and the
+      // literal becomes a constant HIR operand; the closure occupies the
+      // binary six-node stride carrying one published-parameter reference and
+      // one scalar literal.
       bool parameterLiteralArithmeticClosure = false;
       bool parameterLiteralIsLeft = false;
       ast::NodeId parameterLiteralNode;
       ast::NodeId parameterIdentifierNode;
-      if (parameterClosure && closureParameterCount == 1) {
+      // A parameter-plus-literal binary is probed for one declared parameter,
+      // or for two declared parameters where the identifier names the parameter
+      // at ordinary position zero and the second parameter is unused. The
+      // index-zero reconciliation below rejects an identifier naming the second
+      // parameter, matching the builder capability gate.
+      if (parameterClosure && (closureParameterCount == 1 || closureParameterCount == 2)) {
         ast::NodeId parameterLiteralValue;
         if (closureIsFunctionExpression) {
           auto probeShape =

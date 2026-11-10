@@ -1804,6 +1804,45 @@ ZC_TEST("CompilerSessionTest.OneParameterLiteralArithmeticClosureLowersToHirAndM
   ZC_EXPECT(session->getOwnershipCheckedMirModules()[0].builtMir().functions().size() == 2);
 }
 
+ZC_TEST("CompilerSessionTest.TwoParameterUnusedSecondLiteralArithmeticClosureLowersToHirAndMir") {
+  // A non-capturing two-parameter closure whose body is one integer arithmetic
+  // binary over the parameter at ordinary position zero and an integer literal
+  // (`(a, b) -> i32 => a + 1`), reached through a whole-local copy chain
+  // (`let g = f; g(20, 21)`). The second declared parameter is unused, so the
+  // closure function still publishes two parameters but only one
+  // parameter-reference arm plus one constant arm, and the indirect call
+  // passes two source literal arguments. HIR and MIR publish with zero
+  // diagnostics and zero incidents.
+  auto session = packageSession(
+      "fn entry() -> i32 { let f = (a: i32, b: i32) -> i32 => a + 1; "
+      "let g = f; return g(20, 21); }\n"_zc);
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(session->checkSources());
+  ZC_EXPECT(!session->hasDiagnosticErrors());
+  ZC_EXPECT(session->getIncidents().empty());
+  ZC_REQUIRE(session->getVerifiedHirModules().size() == 1);
+  const auto& hir = session->getVerifiedHirModules()[0];
+  ZC_EXPECT(hir.functions().size() == 2);
+  ZC_EXPECT(hir.closureAddresses().size() == 1);
+  ZC_EXPECT(hir.indirectCalls().size() == 1);
+  ZC_EXPECT(hir.primitiveBinaryOperations().size() == 1);
+  ZC_EXPECT(hir.parameterReferences().size() == 1);
+  const auto& indirectCall = hir.indirectCalls()[0];
+  ZC_EXPECT(indirectCall.arguments.size() == 2);
+  ZC_EXPECT(indirectCall.arguments[0].value != zc::none);
+  ZC_EXPECT(indirectCall.arguments[1].value != zc::none);
+  ZC_EXPECT(indirectCall.callee == hir.closureAddresses()[0].closure);
+  size_t closureParameterTotal = 0;
+  for (const auto& function : hir.functions()) {
+    closureParameterTotal += function.parameters.size();
+  }
+  ZC_EXPECT(closureParameterTotal == 2);
+  ZC_REQUIRE(session->getOwnershipCheckedMirModules().size() == 1);
+  ZC_EXPECT(session->getOwnershipCheckedMirModules()[0].builtMir().functions().size() == 2);
+}
+
 ZC_TEST("CompilerSessionTest.OneParameterUnaryClosureLowersToHirAndMir") {
   // RFC 0057 slice 2: a non-capturing one-parameter closure whose body is one
   // unary operation over its declared parameter (`(n) -> i32 => -n`), reached
