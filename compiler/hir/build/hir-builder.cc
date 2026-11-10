@@ -14517,7 +14517,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                 return rejectClosureCapability();
               }
             } else if (leftIsIdent && rightIsIdent) {
-              if (closureParameterCount != 2) { return rejectClosureCapability(); }
+              // A two-identifier binary is admitted for a one-parameter
+              // closure (the sole parameter repeated, e.g. n + n) or a
+              // two-parameter closure (two distinct or repeated parameters).
+              // Three or more parameters stay on the capability drain.
+              if (closureParameterCount != 1 && closureParameterCount != 2) {
+                return rejectClosureCapability();
+              }
               parameterBodyLeaves.add(binaryLeft);
               parameterBodyLeaves.add(binaryRight);
             } else if (closureParameterCount == 1 &&

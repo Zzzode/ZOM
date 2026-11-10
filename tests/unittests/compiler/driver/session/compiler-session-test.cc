@@ -982,17 +982,10 @@ ZC_TEST("CompilerSessionTest.ExpressionBodyLambdaParameterLowersToHirAndMir") {
   ZC_EXPECT(closureParameterTotal == 1);
   ZC_EXPECT(hir.calls().size() == 1);
   ZC_EXPECT(hir.calls()[0].arguments.size() == 1);
-  // A one-parameter binary that names the sole parameter twice keeps the
-  // capability drain (a parameter binary needs two distinct declared
-  // parameters; the parameter-plus-literal form needs one literal operand).
-  auto rejected = packageSession(
-      "fn entry() -> i32 { let f = (x: i32) -> i32 => x + x; "
-      "return f(41); }\n"_zc);
-  ZC_REQUIRE(rejected->parseSources());
-  ZC_REQUIRE(rejected->bindSources());
-  ZC_EXPECT(!rejected->checkSources());
-  ZC_EXPECT(diagnosticCount(*rejected, diagnostics::DiagID::FunctionBodySemanticsUnavailable) == 1);
-  ZC_EXPECT(rejected->getVerifiedHirModules().size() == 0);
+  // A one-parameter binary that names the sole parameter twice (`x + x`) is
+  // now admitted as a repeated-operand closure; see the dedicated
+  // OneParameterRepeatedOperandClosureLowersToHirAndMir test for its HIR/MIR
+  // shape and native lowering.
 }
 
 ZC_TEST("CompilerSessionTest.TwoParameterExpressionBodyCopiedLambdaLowersToHirAndMir") {
@@ -1302,6 +1295,34 @@ ZC_TEST("CompilerSessionTest.TwoParameterRepeatedOperandComparisonClosureLowersT
   ZC_EXPECT(hir.functions().size() == 2);
   ZC_EXPECT(hir.closureAddresses().size() == 1);
   ZC_EXPECT(hir.indirectCalls().size() == 1);
+  ZC_REQUIRE(hir.parameterReferences().size() == 2);
+  ZC_EXPECT(hir.parameterReferences()[0].parameter == hir.parameterReferences()[1].parameter);
+  ZC_REQUIRE(session->getOwnershipCheckedMirModules().size() == 1);
+  ZC_EXPECT(session->getOwnershipCheckedMirModules()[0].builtMir().functions().size() == 2);
+}
+
+ZC_TEST("CompilerSessionTest.OneParameterRepeatedOperandClosureLowersToHirAndMir") {
+  // RFC 0057 slice 2 one-parameter repeated-operand: a non-capturing
+  // one-parameter closure whose binary names its sole declared parameter twice
+  // (`(n) -> i32 => n + n`), reached through a whole-local copy chain. Both HIR
+  // parameter references carry the single published key and MIR reads that one
+  // parameter local twice. HIR and MIR publish with zero diagnostics and zero
+  // incidents.
+  auto session = packageSession(
+      "fn entry() -> i32 { let f = (n: i32) -> i32 => n + n; "
+      "let g = f; return g(42); }\n"_zc);
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(session->checkSources());
+  ZC_EXPECT(!session->hasDiagnosticErrors());
+  ZC_EXPECT(session->getIncidents().empty());
+  ZC_REQUIRE(session->getVerifiedHirModules().size() == 1);
+  const auto& hir = session->getVerifiedHirModules()[0];
+  ZC_EXPECT(hir.functions().size() == 2);
+  ZC_EXPECT(hir.closureAddresses().size() == 1);
+  ZC_EXPECT(hir.indirectCalls().size() == 1);
+  ZC_EXPECT(hir.primitiveBinaryOperations().size() == 1);
   ZC_REQUIRE(hir.parameterReferences().size() == 2);
   ZC_EXPECT(hir.parameterReferences()[0].parameter == hir.parameterReferences()[1].parameter);
   ZC_REQUIRE(session->getOwnershipCheckedMirModules().size() == 1);

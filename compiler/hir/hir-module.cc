@@ -1258,7 +1258,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       // validation; the closure occupies the binary six-node stride with two
       // published-parameter references.
       bool parameterArithmeticClosure = false;
-      if (parameterClosure && closureParameterCount == 2) {
+      if (parameterClosure && (closureParameterCount == 1 || closureParameterCount == 2)) {
         ast::NodeId parameterArithmeticValue;
         if (closureIsFunctionExpression) {
           auto probeShape =
