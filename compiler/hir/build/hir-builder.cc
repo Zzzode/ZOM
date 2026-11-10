@@ -14615,12 +14615,11 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             parameterNestedLeftIndex = resolvedParameterIndices[0];
             parameterNestedRightIndex = resolvedParameterIndices[1];
           } else if (parameterLiteralArithmetic) {
-            // The sole identifier leaf resolves to the one declared parameter;
-            // the constant operand is reconciled to a checked literal fact at
-            // arm construction.
-            if (parameterBodyLeaves.size() != 1 || resolvedParameterIndices[0] != 0) {
-              return rejectClosureCapability();
-            }
+            // The sole identifier leaf resolves to one declared parameter
+            // (position zero or one); the arm below indexes the published
+            // parameter by this resolved index, and the constant operand is
+            // reconciled to a checked literal fact at arm construction.
+            if (parameterBodyLeaves.size() != 1) { return rejectClosureCapability(); }
             parameterLiteralParameterIndex = resolvedParameterIndices[0];
           } else if (parameterUnaryClosure) {
             // The unary operand must resolve to the position-zero declared

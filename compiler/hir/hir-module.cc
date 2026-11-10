@@ -2395,13 +2395,13 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           }
         }
         if (closureSourceValueValid && parameterLiteralArithmeticClosure) {
-          // The sole identifier operand must materialize to the one declared
-          // parameter at ordinary position zero.
+          // The sole identifier operand must materialize to one declared
+          // parameter (at ordinary position zero or one); the record
+          // reconciliation below keys on the resolved parameter.
           size_t leafIndex = 0;
           if (sourceLeafNodes.size() != 1 ||
               !namesOneDeclaredParameter(sourceLeafNodes[0], ast::kFunctionExpressionParamsIdWord,
-                                         leafIndex) ||
-              leafIndex != 0) {
+                                         leafIndex)) {
             closureSourceValueValid = false;
           }
         }
@@ -2504,8 +2504,10 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           }
         }
         if (parameterLiteralArithmeticClosure) {
-          // The one identifier operand must name the sole declared parameter at
-          // ordinary position zero; the other operand is the probed literal.
+          // The one identifier operand must name a declared parameter (at
+          // ordinary position zero or one); the other operand is the probed
+          // literal. The record reconciliation below keys on the resolved
+          // parameter, so no fixed index is imposed here.
           const ast::NodeId lambdaLeft(
               closureTree.node(lambdaBody).payload.words[ast::kBinaryExprLhsWord]);
           const ast::NodeId lambdaRight(
@@ -2521,8 +2523,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           size_t lambdaParameterIndex = 0;
           if (!namesOneDeclaredParameter(parameterIdentifierNode,
                                          ast::kLambdaExpressionParamsIdWord,
-                                         lambdaParameterIndex) ||
-              lambdaParameterIndex != 0) {
+                                         lambdaParameterIndex)) {
             return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                 ir::IrFailureKind::InvalidFact, module, registries,
                                                 index + 1);
@@ -2843,12 +2844,10 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                                ? ast::kFunctionExpressionParamsIdWord
                                                : ast::kLambdaExpressionParamsIdWord;
         size_t declaredIdentIndex = 0;
-        const bool identNamesDeclaredParameter =
-            namesOneDeclaredParameter(parameterIdentifierNode, parameterListWord,
-                                      declaredIdentIndex) &&
-            declaredIdentIndex == 0;
+        const bool identNamesDeclaredParameter = namesOneDeclaredParameter(
+            parameterIdentifierNode, parameterListWord, declaredIdentIndex);
         const identity::CallableParameterKey expectedDeclaredKey =
-            earlyCallable.parameters[0].parameter.clone();
+            earlyCallable.parameters[declaredIdentIndex].parameter.clone();
         auto literalFactIndex = factIndex(facts.literals(), parameterLiteralNode);
         auto parameterLiteralCallIndex = factIndex(facts.calls(), closureValue);
         if (!identNamesDeclaredParameter ||
