@@ -1,6 +1,6 @@
 {
   "corpusRoot": "tests/conformance/corpus",
-  "count": 1142,
+  "count": 1144,
   "irChannel": true,
   "outputs": {
     "02-lexical/bigint_suffix_neg_01.zom": {
@@ -2785,10 +2785,6 @@
       "mirSha256": "ea6eb931d69086979885ff9bb9a7cdb2cfd5a65e65f18d1f802150448ac60f67",
       "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
-    "06-declarations/functions/closure-function-definitions/closure_second_parameter_unary_expression_body_neg_01.zom": {
-      "exitCode": 1,
-      "sha256": "670af330e815cdf2ce593e4a52db2b0f1c0b5e6fe82400dca3bde11dc5436518"
-    },
     "06-declarations/functions/closure-function-definitions/closure_three_parameter_arithmetic_expression_body_neg_01.zom": {
       "exitCode": 1,
       "sha256": "92045c668a1f90210b2331b3ccb5935899f45de27d586478892991014a78849c"
@@ -2796,6 +2792,10 @@
     "06-declarations/functions/closure-function-definitions/closure_three_parameter_literal_arithmetic_expression_body_neg_01.zom": {
       "exitCode": 1,
       "sha256": "fd0a10a58d556137a93e4b31656ed9e158f672a6c9d561072f1059903f47fd0e"
+    },
+    "06-declarations/functions/closure-function-definitions/closure_three_parameter_unary_expression_body_neg_01.zom": {
+      "exitCode": 1,
+      "sha256": "c7123507f90525f5c379204996bd39e914a4f02cca15324d77a637f8d3e5cd84"
     },
     "06-declarations/functions/closure-function-definitions/closure_three_scalar_capture_neg_01.zom": {
       "exitCode": 1,
@@ -2907,6 +2907,18 @@
       "exitCode": 0,
       "hirSha256": "d05a58a9c5c22c26c93908e8552cdb417ea7e03e2ee9e8094c77095ee1c0447d",
       "mirSha256": "6c3401cba267d95f36f659a21cf351135aca45c776184f807b7a133a4740ae20",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    "06-declarations/functions/closure-function-definitions/two_parameter_second_position_unary_block_body_pos_01.zom": {
+      "exitCode": 0,
+      "hirSha256": "5d5a133dd71e741baae5f905ee391cc12acbfa3faab5094ac98bd2ce54c4ff14",
+      "mirSha256": "fe39f53613e9538e992ccf721d1d2d81545a550cc8a0a17d23356ad4cb69e380",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    "06-declarations/functions/closure-function-definitions/two_parameter_second_position_unary_expression_body_pos_01.zom": {
+      "exitCode": 0,
+      "hirSha256": "07ce75259c9dcb0aad1cb7d82b2738dbb32346a848ab98de8d35b9510129843f",
+      "mirSha256": "1a10b8f269cd86f1ef2e5a2b58c38ed5a5c9b53115ebdec2c1756755f92dae93",
       "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     "06-declarations/functions/closure-function-definitions/two_parameter_sequential_local_block_closure_pos_01.zom": {
