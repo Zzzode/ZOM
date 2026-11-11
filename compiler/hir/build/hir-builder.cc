@@ -1004,7 +1004,6 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         // the capability drain. A zero-argument value call is admitted only for
         // a zero-parameter closure; the empty-argument code-pointer ladder
         // lowers its scalar-literal-return body with no call operands.
-        constexpr size_t kMaxClosureValueCallArguments = 2;
         if (!tree.contains(calleeNode) ||
             tree.node(calleeNode).kind != ast::SyntaxKind::IdentExpr ||
             !tree.contains(callTypeArguments) || !callTypeArguments.empty() ||
@@ -13880,10 +13879,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       // qualify: the block-body `fn` expression returns the parameter through a
       // source block and return, and the expression-body paren-arrow lambda
       // names it as its sole expression. The parameter count ceiling matches
-      // the scalar call ladder width (lir::kMaxCallArguments); wider closures
-      // keep the capability drain. A block-body lambda and any other expression
-      // body keep their existing gates, as do capturing closures.
-      constexpr size_t kMaxScalarClosureParameters = 2;
+      // the scalar call ladder width (lir::kMaxCallArguments, mirrored by
+      // hir::kMaxScalarClosureParameters); wider closures keep the capability
+      // drain. A block-body lambda and any other expression body keep their
+      // existing gates, as do capturing closures.
       const size_t closureParameterCount = closureCallable.parameters.size();
       const bool parameterClosure =
           closureParameterCount >= 1 && closureParameterCount <= kMaxScalarClosureParameters;
@@ -14476,7 +14475,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             parameterUnaryOperandNode = unaryOperand;
             parameterBodyLeaves.add(unaryOperand);
           } else if (closureTree.node(parameterClosureValue).kind == ast::SyntaxKind::IdentExpr) {
-            if (closureParameterCount < 1 || closureParameterCount > 2) {
+            if (closureParameterCount < 1 || closureParameterCount > kMaxScalarClosureParameters) {
               return rejectClosureCapability();
             }
             parameterBodyLeaves.add(parameterClosureValue);

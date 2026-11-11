@@ -3733,7 +3733,11 @@ zc::Maybe<RecursiveFunctionProduct> buildClosureValueCallReturn(const LoweringCo
   // Mixed only when both a declared constant and a captured local are present;
   // a constants-only non-capturing value call keeps its original edge.
   const bool mixedArguments = constantArgumentCount != 0 && localArgumentCount != 0;
-  if (constantArgumentCount > 2) { return zc::none; }
+  // The constants-only non-capturing edge is bounded by the HIR closure value
+  // call ladder width, which mirrors the LIR call argument cap. Keeping the MIR
+  // admission equal to the HIR admission prevents a widened closure from
+  // reaching the legacy rejection cascade as an invariant failure.
+  if (constantArgumentCount > hir::kMaxClosureValueCallArguments) { return zc::none; }
   if (mixedArguments &&
       (constantArgumentCount != 1 || localArgumentCount != 1 || sourceCall.arguments.size() != 2 ||
        sourceCall.arguments[0].value == zc::none || sourceCall.arguments[0].local != zc::none ||

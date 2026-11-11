@@ -21,6 +21,7 @@
 
 #include "compiler/lir/lir-module.h"
 
+#include "compiler/hir/hir-module.h"
 #include "compiler/lir/lir-store.h"
 #include "zc/core/vector.h"
 #include "zc/ztest/test.h"
@@ -173,6 +174,37 @@ ZC_TEST("LIR return float terminator carries the float constant") {
 ZC_TEST("LIR float constant fails closed on a non-float carrier") {
   auto carrier = ZC_REQUIRE_NONNULL(ValueType::integer(IntegerBitWidth::Bit64));
   ZC_EXPECT(FloatConstant::from(carrier, 0x3ff8000000000000ULL) == zc::none);
+}
+
+// RFC 0059: the HIR scalar closure admission must never exceed the LIR call
+// ladder width, or the HIR builder would emit a call the LIR terminator cannot
+// represent and the function would reach the legacy rejection cascade as an
+// invariant failure instead of a clean capability drain. The two HIR bounds are
+// kept in lockstep with each other, and each is bounded by the LIR cap.
+ZC_TEST("HIR closure arity bounds never exceed the LIR call argument cap") {
+  ZC_EXPECT(hir::kMaxScalarClosureParameters == hir::kMaxClosureValueCallArguments);
+  ZC_EXPECT(hir::kMaxScalarClosureParameters <= kMaxCallArguments);
+  ZC_EXPECT(hir::kMaxClosureValueCallArguments <= kMaxCallArguments);
+}
+
+// RFC 0059: the LIR call ladder width is three. The terminator factory itself
+// enforces the cap so no caller can construct an unbounded call: a zero- or
+// at-cap argument vector is admitted while an over-cap vector fails closed.
+ZC_TEST("LIR call terminator factory admits the cap and rejects an over-cap vector") {
+  zc::Vector<Operand> noArguments;
+  ZC_EXPECT(Terminator::callFunction(1, 2, zc::mv(noArguments), LirBlockId()) != zc::none);
+
+  zc::Vector<Operand> atCap;
+  for (uint32_t index = 0; index < kMaxCallArguments; ++index) {
+    atCap.add(Operand::localUse(index + 1));
+  }
+  ZC_EXPECT(Terminator::callFunction(1, 2, zc::mv(atCap), LirBlockId()) != zc::none);
+
+  zc::Vector<Operand> overCap;
+  for (uint32_t index = 0; index < kMaxCallArguments + 1; ++index) {
+    overCap.add(Operand::localUse(index + 1));
+  }
+  ZC_EXPECT(Terminator::callFunction(1, 2, zc::mv(overCap), LirBlockId()) == zc::none);
 }
 
 }  // namespace

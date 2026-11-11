@@ -1237,8 +1237,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       // lambda; the difference from a one-capture closure is parameter
       // provenance, checked against the published signature instead of capture
       // facts. The parameter count ceiling matches the scalar call ladder width
-      // (lir::kMaxCallArguments).
-      constexpr size_t kMaxScalarClosureParameters = 2;
+      // (lir::kMaxCallArguments, mirrored by hir::kMaxScalarClosureParameters).
       const size_t closureParameterCount = earlyCallable.parameters.size();
       const bool parameterClosure = !closureCaptures && closureParameterCount >= 1 &&
                                     closureParameterCount <= kMaxScalarClosureParameters &&
@@ -15510,8 +15509,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       const size_t slotCount = copyCount + 1;
       const size_t valueCallStride = 5 + 2 * slotCount;
       // Matches the HIR builder admission and the scalar call ladder width
-      // (lir::kMaxCallArguments).
-      constexpr size_t kMaxClosureValueCallArguments = 2;
+      // (lir::kMaxCallArguments, mirrored by hir::kMaxClosureValueCallArguments).
       const HirNodeId valueCallReturnId = hirId(expectedFunction + 2 + 2 * slotCount);
       const HirNodeId valueCallFunctionRefId = hirId(expectedFunction + 3 + 2 * slotCount);
       const HirNodeId valueCallCallId = hirId(expectedFunction + 4 + 2 * slotCount);

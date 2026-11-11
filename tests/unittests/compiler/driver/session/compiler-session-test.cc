@@ -695,6 +695,40 @@ ZC_TEST("CompilerSessionTest.ZeroArgumentCopiedClosureValueCallLowersToHirAndMir
       "let g = f; return g(); }\n"_zc);
 }
 
+ZC_TEST("CompilerSessionTest.ThreeParameterParameterReferenceClosureValueCallLowersToHirAndMir") {
+  // RFC 0059: a non-capturing three-parameter closure whose sole body value is
+  // its third parameter, reached through a whole-local copy chain, lowers over
+  // the closure-address indirect-call value path with a three-element argument
+  // vector and one parameter reference. Both the expression-body paren-arrow
+  // lambda and the block-body function-expression publish HIR and MIR with zero
+  // diagnostics and zero incidents; the indirect call carries three arguments
+  // and names the closure-address origin.
+  const auto expectLowered = [](zc::StringPtr source) {
+    auto session = packageSession(source);
+    ZC_REQUIRE(session->parseSources());
+    ZC_REQUIRE(session->bindSources());
+    ZC_EXPECT(session->checkSources());
+    ZC_EXPECT(!session->hasDiagnosticErrors());
+    ZC_EXPECT(session->getIncidents().empty());
+    ZC_REQUIRE(session->getVerifiedHirModules().size() == 1);
+    const auto& hir = session->getVerifiedHirModules()[0];
+    ZC_EXPECT(hir.functions().size() == 2);
+    ZC_EXPECT(hir.closureAddresses().size() == 1);
+    ZC_EXPECT(hir.indirectCalls().size() == 1);
+    ZC_EXPECT(hir.indirectCalls()[0].arguments.size() == 3);
+    ZC_EXPECT(hir.indirectCalls()[0].callee == hir.closureAddresses()[0].closure);
+    ZC_EXPECT(hir.parameterReferences().size() == 1);
+    ZC_REQUIRE(session->getOwnershipCheckedMirModules().size() == 1);
+    ZC_EXPECT(session->getOwnershipCheckedMirModules()[0].builtMir().functions().size() == 2);
+  };
+  expectLowered(
+      "fn entry() -> i32 { let f = (a: i32, b: i32, c: i32) -> i32 => c; "
+      "let g = f; return g(1, 2, 3); }\n"_zc);
+  expectLowered(
+      "fn entry() -> i32 { let f = fn (a: i32, b: i32, c: i32) -> i32 { return c; }; "
+      "let g = f; return g(1, 2, 3); }\n"_zc);
+}
+
 ZC_TEST("CompilerSessionTest.ParameterizedBlockBodyLambdaClosureKeepsCapabilityDrain") {
   // RFC 0057 slice 1b admits a parameterized expression-body paren-arrow
   // lambda whose sole expression is a parameter reference, but a block-body
@@ -929,12 +963,14 @@ ZC_TEST("CompilerSessionTest.TwoParameterNonCapturingClosureLowersToHirAndMir") 
   ZC_EXPECT(session->getOwnershipCheckedMirModules()[0].builtMir().functions().size() == 2);
 }
 
-ZC_TEST("CompilerSessionTest.OverTwoParameterClosureKeepsCapabilityDrain") {
-  // RFC 0057 slice 1b boundary: the scalar call ladder admits at most two
-  // ordinary closure parameters. A three-parameter closure type-checks (zero
-  // ZOM4009) but keeps the HIR capability drain, with zero published HIR
-  // modules and zero incidents. A block-body paren-arrow lambda keeps the
-  // drain because only the expression-body spelling is admitted.
+ZC_TEST("CompilerSessionTest.OverThreeParameterClosureKeepsCapabilityDrain") {
+  // RFC 0059 boundary: the scalar call ladder admits at most three ordinary
+  // closure parameters for the bare parameter-reference arm. A four-parameter
+  // closure type-checks (zero ZOM4009) but keeps the HIR capability drain at
+  // the parameter-count gate, with zero published HIR modules and zero
+  // incidents. Separately, a one-parameter block-body paren-arrow lambda keeps
+  // the drain because only the expression-body paren-arrow spelling is admitted
+  // for that body form; that spelling restriction is independent of arity.
   const auto drains = [](zc::StringPtr source) {
     auto session = packageSession(source);
     ZC_REQUIRE(session->parseSources());
@@ -947,8 +983,8 @@ ZC_TEST("CompilerSessionTest.OverTwoParameterClosureKeepsCapabilityDrain") {
     ZC_EXPECT(session->getIncidents().empty());
   };
   drains(
-      "fn entry() -> i32 { let f = fn(a: i32, b: i32, c: i32) -> i32 { return a; }; "
-      "return f(1, 2, 3); }\n"_zc);
+      "fn entry() -> i32 { let f = (a: i32, b: i32, c: i32, d: i32) -> i32 => d; "
+      "return f(1, 2, 3, 4); }\n"_zc);
   drains(
       "fn entry() -> i32 { let f = (n: i32) -> i32 => { return n; }; "
       "return f(42); }\n"_zc);

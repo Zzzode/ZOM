@@ -136,11 +136,13 @@ enum class TerminatorKind : uint8_t {
 inline constexpr uint32_t kMaxAggregateReturnSlots = 64;
 
 /// \brief Upper bound on the argument vector a call terminator may carry. It
-/// covers the two-argument multi-argument call slice and the admitted
-/// two-field by-value aggregate, whose nominal argument flattens to one
-/// integer call argument per field. The terminator cannot describe an
-/// unbounded argument list; a wider bound is a later step.
-inline constexpr uint32_t kMaxCallArguments = 2;
+/// covers the admitted multi-argument call and closure scalar ladder (RFC
+/// 0059 raised the scalar width from two to three) and the admitted by-value
+/// aggregate, whose nominal argument flattens to one integer call argument
+/// per field. The terminator cannot describe an unbounded argument list; a
+/// wider bound remains an explicit later constant change, and stack-argument
+/// lowering is intentionally not enabled.
+inline constexpr uint32_t kMaxCallArguments = 3;
 
 /// \brief Closed relational comparison operator for a LIR compare statement.
 ///

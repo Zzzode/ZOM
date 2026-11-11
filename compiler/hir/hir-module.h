@@ -27,6 +27,19 @@ class AdmittedBoundModule;
 
 namespace zomlang::compiler::hir {
 
+/// \brief Maximum number of declared parameters admitted for a non-capturing
+/// scalar closure. This mirrors the LIR scalar call ladder width
+/// (`lir::kMaxCallArguments`); a closure wider than this cannot be represented
+/// by the call terminator and keeps its capability drain. RFC 0059 raised both
+/// bounds together from two to three. A cross-layer test asserts this never
+/// exceeds the LIR bound.
+inline constexpr size_t kMaxScalarClosureParameters = 3;
+
+/// \brief Maximum number of scalar-literal arguments admitted on a closure
+/// value call. Kept equal to `kMaxScalarClosureParameters` and the LIR call
+/// ladder width so every admitted closure is callable end to end.
+inline constexpr size_t kMaxClosureValueCallArguments = 3;
+
 struct ModuleHirVisibility final {
   identity::ModuleId module;
 };
