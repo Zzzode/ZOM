@@ -127,6 +127,7 @@ not reused.
 | [RFC 0056](0056-generic-function-monomorphization.md) | Generic Function Monomorphization | ACCEPTED | compiler | compiler | rfc | [Review Tracker](tracking/0056-generic-function-monomorphization-review.md) | [Tracker](tracking/0056-generic-function-monomorphization-review.md#implementation-tracker) |
 | [RFC 0057](0057-closure-representation.md) | Closure Representation and Non-Capturing Closures | ACCEPTED | compiler | compiler | rfc | [Review Tracker](tracking/0057-closure-representation-review.md) | [Tracker](tracking/0057-closure-representation-review.md#implementation-tracker) |
 | [RFC 0058](0058-capturing-closure-identity.md) | Capturing Closure Unboxed Pair and Closure Identity | DRAFT | compiler | compiler | rfc | TBD | TBD |
+| [RFC 0059](0059-scalar-closure-call-ladder-arity.md) | Scalar Closure And Call Ladder Arity Beyond Two | IMPLEMENTING | compiler | compiler | rfc | [Review Tracker](tracking/0059-scalar-closure-call-ladder-arity-review.md) | [Implementation Tracker](tracking/0059-scalar-closure-call-ladder-arity-review.md#implementation-tracker) |
 
 ## Status Values
 
