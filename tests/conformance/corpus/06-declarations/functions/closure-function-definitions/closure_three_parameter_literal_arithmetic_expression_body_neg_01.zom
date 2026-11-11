@@ -1,5 +1,5 @@
-// RFC 0057 slice 2 negative: the scalar closure parameter ladder admits at
-// most two declared parameters. A three-parameter parameter-plus-literal
+// RFC 0059 negative: three declared parameters are admitted only for the bare
+// parameter-reference closure arm. A three-parameter parameter-plus-literal
 // closure, even when the identifier names an inner parameter, keeps the
 // owning function on one ZOM4099 capability diagnostic with zero incidents.
 fn entry() -> i32 {

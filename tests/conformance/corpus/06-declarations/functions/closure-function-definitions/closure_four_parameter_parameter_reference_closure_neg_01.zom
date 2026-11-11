@@ -1,0 +1,9 @@
+// RFC 0059 negative: the scalar closure parameter ladder admits at most three
+// declared parameters for the bare parameter-reference arm. A four-parameter
+// closure, even one whose sole body value is a declared parameter, keeps the
+// owning function on one ZOM4099 capability diagnostic with zero incidents.
+fn entry() -> i32 {
+  let f = (a: i32, b: i32, c: i32, d: i32) -> i32 => d;
+  let g = f;
+  return g(1, 2, 3, 4);
+}

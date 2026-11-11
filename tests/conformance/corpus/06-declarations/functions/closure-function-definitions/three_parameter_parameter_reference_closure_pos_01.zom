@@ -1,0 +1,11 @@
+// RFC 0059 positive: a non-capturing three-parameter expression-body lambda
+// whose sole body value is one declared parameter at the third position. The
+// scalar closure ladder admits three declared parameters for the bare
+// parameter-reference return, reached through a whole-local copy chain. The
+// function lowers through the full checker/HIR/MIR/LIR pipeline with no
+// capability diagnostic and exits 3 natively.
+fn entry() -> i32 {
+  let f = (a: i32, b: i32, c: i32) -> i32 => c;
+  let g = f;
+  return g(1, 2, 3);
+}

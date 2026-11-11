@@ -1,0 +1,8 @@
+// RUN: cd %corpus && %zomc compile --check 06-declarations/functions/closure-function-definitions/three_parameter_parameter_reference_closure_pos_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// RFC 0059 positive: the three-parameter bare parameter-reference closure
+// lowers through the full checker/HIR/MIR/LIR pipeline with no capability gate.
+// The compiler exits 0 and emits no diagnostic.
+
+// CHECK-NOT: Error

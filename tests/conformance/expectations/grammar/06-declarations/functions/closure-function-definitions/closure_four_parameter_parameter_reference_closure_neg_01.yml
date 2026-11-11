@@ -1,0 +1,5 @@
+section: "§4 LambdaExpression four-parameter parameter reference body"
+covers_rule: "lambdaExpression, lambdaParameterList, lambdaExpressionBody, identifier"
+expected: "ACCEPT"
+notes:
+  - "RFC 0059: a four-parameter expression-body lambda parses legally; it drains semantically (ZOM4099) because the bare parameter-reference arm admits at most three declared parameters, never as a grammar rejection."

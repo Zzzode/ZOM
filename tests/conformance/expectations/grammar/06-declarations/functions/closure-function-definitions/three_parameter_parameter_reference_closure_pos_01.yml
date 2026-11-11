@@ -1,0 +1,5 @@
+section: "§4 LambdaExpression three-parameter parameter reference body"
+covers_rule: "lambdaExpression, lambdaParameterList, lambdaExpressionBody, identifier"
+expected: "ACCEPT"
+notes:
+  - "RFC 0059: a three-parameter expression-body lambda whose sole body value is one declared parameter parses legally; admitting the bare parameter-reference arm up to three parameters is a compiler capability decision, never a grammar one."

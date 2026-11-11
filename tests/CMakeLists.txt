@@ -569,6 +569,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/two-parameter-copied-closure-value-consumer/Zom.toml::two_parameter_copied_closure_value_consumer::two_parameter_copied_closure_value_consumer::40"
       --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/three-parameter-closure-consumer/Zom.toml::three_parameter_closure_consumer::three_parameter_closure_consumer::3"
+      --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/expression-body-closure-consumer/Zom.toml::expression_body_closure_consumer::expression_body_closure_consumer::42"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/two-parameter-expression-body-copied-closure-consumer/Zom.toml::two_parameter_expression_body_copied_closure_consumer::two_parameter_expression_body_copied_closure_consumer::40"
